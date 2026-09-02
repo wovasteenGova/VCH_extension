@@ -15,9 +15,126 @@
   --color-brass-950: #2f1f12;
 }
 
+:root {
+  --scrollbar-size: 8px;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgb(196 160 92 / 0.28);
+  --scrollbar-thumb-hover: rgb(196 160 92 / 0.48);
+}
+
 html,
 body,
 #app {
-  min-width: 22rem;
-  min-height: 100%;
+  width: 27rem;
+  height: 40rem;
+  max-width: 27rem;
+  max-height: 40rem;
+  min-width: 27rem;
+  min-height: 40rem;
+  overflow: hidden;
+}
+
+.popup-shell {
+  width: 27rem;
+  height: 40rem;
+  max-width: 27rem;
+  max-height: 40rem;
+  overflow: hidden;
+}
+
+/* ClaimBuilder-style: hide scrollbars globally; reveal thin thumb while scrolling */
+*,
+*::before,
+*::after {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.no-scrollbar,
+.no-scrollbar.scrollbar-visible {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.no-scrollbar::-webkit-scrollbar,
+.no-scrollbar.scrollbar-visible::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.vcb-scrollbar-auto,
+.custom-scrollbar:not(.no-scrollbar) {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  -ms-overflow-style: auto;
+}
+
+.vcb-scrollbar-auto::-webkit-scrollbar,
+.custom-scrollbar:not(.no-scrollbar)::-webkit-scrollbar {
+  display: block;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+.vcb-scrollbar-auto::-webkit-scrollbar-track,
+.custom-scrollbar:not(.no-scrollbar)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.vcb-scrollbar-auto::-webkit-scrollbar-thumb,
+.custom-scrollbar:not(.no-scrollbar)::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background-color: transparent;
+  transition: background-color 280ms ease;
+}
+
+.vcb-scrollbar-auto.is-scrollbar-visible,
+.custom-scrollbar.is-scrollbar-visible:not(.no-scrollbar) {
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.vcb-scrollbar-auto.is-scrollbar-visible::-webkit-scrollbar-thumb,
+.custom-scrollbar.is-scrollbar-visible:not(.no-scrollbar)::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+}
+
+.vcb-scrollbar-auto.is-scrollbar-visible::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar.is-scrollbar-visible:not(.no-scrollbar)::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vcb-scrollbar-auto::-webkit-scrollbar-thumb,
+  .custom-scrollbar:not(.no-scrollbar)::-webkit-scrollbar-thumb {
+    transition: none;
+  }
+}
+
+/* Tab triggers share width evenly so labels are not truncated */
+.vch-popup-tabs [role="tablist"] {
+  display: flex;
+  width: 100%;
+}
+
+.vch-popup-tabs [role="tab"] {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.vch-popup-tabs [role="tabpanel"] {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
 }

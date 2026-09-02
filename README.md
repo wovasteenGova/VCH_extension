@@ -1,64 +1,45 @@
-# VCH Extension
+# Veterans Central Hub Extension
 
-Browser extension for **Veterans Central Hub** — connect VA.gov activity with [VCH Hub](https://veteranscentralhub.us) and [ClaimBuilder](https://claimbuilder.veteranscentralhub.us).
+**Claim tracker** plus a shortcut to **[Veterans Central Hub](https://veteranscentralhub.com)** and **[ClaimBuilder](https://claimbuilder.veteranscentralhub.com)**.
 
-Built with [WXT](https://wxt.dev) (Manifest V3) and [Nuxt UI v4](https://ui.nuxt.com) (Vue + Vite plugin — the same component stack as VCH / ClaimBuilder, without running a Nuxt server inside the extension).
+Built with [WXT](https://wxt.dev) (Manifest V3) and [Nuxt UI v4](https://ui.nuxt.com).
 
-## What works today (MVP)
+## What it does
 
-- Popup UI with VCH branding (Nuxt UI)
-- Content script on `https://www.va.gov/*`
-- Read active tab context (title, URL, selected text)
-- Save selected text to extension local storage
-- Quick links to VCH Hub and ClaimBuilder
-- Opens VCH benefits page on first install
+- **Claims tab (default):** Lists your VA benefits claims via `https://api.va.gov/v0/benefits_claims` using your existing VA.gov browser session
+- **Ratings tab:** Rated disabilities from `api.va.gov/v0/rated_disabilities`
+- **Appeals tab:** Appeals from `api.va.gov/v0/appeals`
+- **Hub tab:** Quick links to VCH and ClaimBuilder
 
-## Requirements
+**You must sign in at VA.gov first** (Login.gov, ID.me, etc.) and ideally open [Manage claims](https://www.va.gov/track-claims/your-claims/) once. The extension does not ask for your VA password and does not send VA data to VCH servers.
 
-- Node.js 20+
-- pnpm (recommended) or npm
+**Canonical install & help URL:** https://veteranscentralhub.com/extension
+
+## Privacy
+
+- VA API calls run in the extension background with `credentials: include` — session cookies stay between your browser and VA
+- No VA passwords stored
+- Not affiliated with the U.S. Department of Veterans Affairs
 
 ## Setup
 
 ```bash
 cp .env.example .env
-pnpm install
-pnpm dev
+npm install
+npm run build
 ```
 
-Load the unpacked extension in Chrome:
+Load in Chrome: **Extensions → Developer mode → Load unpacked** → `.output/chrome-mv3`
 
-1. Open `chrome://extensions`
-2. Enable **Developer mode**
-3. **Load unpacked** → select `.output/chrome-mv3-dev` (path shown in terminal after `pnpm dev`)
+For development, `npm run dev` loads `.output/chrome-mv3-dev` (requires the dev server running).
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `pnpm dev` | Dev build with HMR |
-| `pnpm build` | Production build |
-| `pnpm zip` | Zip for Chrome Web Store upload |
-| `pnpm compile` | Vue/TS typecheck |
-
-## Project layout
-
-```
-entrypoints/
-  background.ts    # service worker — messaging, install hook
-  content.ts       # runs on VA.gov pages
-  popup/           # Nuxt UI popup (Vue)
-shared/            # URLs and shared constants
-utils/             # extension messaging helpers
-public/            # icons + VCH logo
-```
-
-## Next steps (product)
-
-1. **VCH auth** — connect signed-in Hub/ClaimBuilder session via `externally_connectable`
-2. **Clip to ClaimBuilder** — POST clips to a VCH API instead of local storage only
-3. **VA.gov detection** — map URL patterns to checklist updates in ClaimBuilder
-4. **Side panel** — persistent VCH assistant while filing on VA.gov
+| `npm run dev` | Dev build with HMR |
+| `npm run build` | Production build |
+| `npm run zip` | Zip for Chrome Web Store |
 
 ## Repo
 

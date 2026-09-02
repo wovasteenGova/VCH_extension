@@ -1,28 +1,33 @@
 import ui from '@nuxt/ui/vite'
 import { defineConfig } from 'wxt'
 
-const hubUrl = process.env.VITE_VCH_HUB_URL || 'https://veteranscentralhub.us'
+const hubUrl = process.env.VITE_VCH_HUB_URL || 'https://www.veteranscentralhub.com'
 
 export default defineConfig({
   modules: ['@wxt-dev/module-vue'],
   manifest: {
-    name: 'Veterans Central Hub Connector',
-    description: 'Connect VA.gov with Veterans Central Hub and ClaimBuilder.',
-    permissions: ['storage', 'activeTab'],
+    name: 'Veterans Central Hub',
+    description: 'Track VA claims from your signed-in VA.gov session, plus quick access to Veterans Central Hub.',
+    permissions: ['storage', 'cookies'],
     host_permissions: [
+      'https://api.va.gov/*',
       'https://www.va.gov/*',
-      'https://*.veteranscentralhub.us/*',
-      'https://*.veteranscentralhub.com/*'
+      'https://va.gov/*',
+      'https://veteranscentralhub.com/*',
+      'https://*.veteranscentralhub.com/*',
+      'https://veteranscentralhub.us/*',
+      'https://*.veteranscentralhub.us/*'
     ],
     action: {
-      default_title: 'Open VCH Connector'
+      default_title: 'VCH — Claim tracker & Hub'
     },
     externally_connectable: {
       matches: [
         `${hubUrl}/*`,
-        'https://veteranscentralhub.us/*',
         'https://veteranscentralhub.com/*',
-        'https://claimbuilder.veteranscentralhub.us/*',
+        'https://www.veteranscentralhub.com/*',
+        'https://veteranscentralhub.us/*',
+        'https://www.veteranscentralhub.us/*',
         'https://claimbuilder.veteranscentralhub.com/*'
       ]
     }

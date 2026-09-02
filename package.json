@@ -1,8 +1,8 @@
 {
   "name": "vch-extension",
   "private": true,
-  "version": "0.1.0",
-  "description": "Veterans Central Hub browser connector for VA.gov and ClaimBuilder",
+  "version": "0.1.8",
+  "description": "VA claim tracker plus Veterans Central Hub and ClaimBuilder shortcuts",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
