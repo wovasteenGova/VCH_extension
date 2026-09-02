@@ -1,0 +1,23 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@theme static {
+  --color-brass-50: #faf7f0;
+  --color-brass-100: #f2ead8;
+  --color-brass-200: #e4d4b0;
+  --color-brass-300: #d4bc85;
+  --color-brass-400: #c4a05c;
+  --color-brass-500: #b08844;
+  --color-brass-600: #946b35;
+  --color-brass-700: #78532c;
+  --color-brass-800: #624428;
+  --color-brass-900: #523a25;
+  --color-brass-950: #2f1f12;
+}
+
+html,
+body,
+#app {
+  min-width: 22rem;
+  min-height: 100%;
+}
