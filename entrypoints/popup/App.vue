@@ -18,50 +18,54 @@ const tabs = [
 </script>
 
 <template>
-  <UApp>
-    <div class="popup-shell flex flex-col gap-2 overflow-hidden p-3">
-      <header class="flex shrink-0 flex-col gap-1.5">
-        <div class="flex items-center gap-3">
-          <img
-            src="/brand/vch-hub-logo.png"
-            alt="Veterans Central Hub"
-            class="size-10 rounded-lg object-contain"
-          >
-          <div class="min-w-0 flex-1">
-            <p class="font-semibold text-highlighted">
-              VCH Claim Tracker
-            </p>
-            <p class="text-muted text-xs leading-snug">
-              VA.gov session data stays on your device
-            </p>
+  <UApp class="popup-app">
+    <div class="popup-shell flex h-full flex-col gap-2 overflow-hidden p-3">
+      <div class="popup-chrome shrink-0 space-y-2">
+        <header class="flex flex-col gap-1.5">
+          <div class="flex items-center gap-3">
+            <img
+              src="/brand/vch-hub-logo.png"
+              alt="Veterans Central Hub"
+              class="size-10 rounded-lg object-contain"
+            >
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold text-highlighted">
+                VCH Web Extension
+              </p>
+              <p class="text-muted text-xs leading-snug">
+                VA.gov session data stays on your device
+              </p>
+            </div>
           </div>
+          <ConnectionStatusBar />
+        </header>
+
+        <UTabs
+          v-model="activeTab"
+          :items="tabs"
+          default-value="claims"
+          :unmount-on-hide="false"
+          class="vch-popup-tabs w-full"
+        />
+      </div>
+
+      <div class="flex min-h-0 flex-1 flex-col overflow-visible">
+        <div class="popup-tab-scroll custom-scrollbar relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <VaClaimTrackerTab v-if="activeTab === 'claims'" />
+          <VaRatingsTab v-else-if="activeTab === 'ratings'" />
+          <VaAppealsTab v-else-if="activeTab === 'appeals'" />
+          <HubTab v-else-if="activeTab === 'hub'" />
         </div>
-        <ConnectionStatusBar />
-      </header>
 
-      <UTabs
-        v-model="activeTab"
-        :items="tabs"
-        default-value="claims"
-        :unmount-on-hide="false"
-        class="vch-popup-tabs flex min-h-0 w-full flex-1 flex-col"
-      >
-        <template #content="{ item }">
-          <div class="flex min-h-0 flex-1 flex-col pt-2">
-            <VaClaimTrackerTab v-if="item.value === 'claims'" />
-            <VaRatingsTab v-else-if="item.value === 'ratings'" />
-            <VaAppealsTab v-else-if="item.value === 'appeals'" />
-            <HubTab v-else-if="item.value === 'hub'" />
-          </div>
-        </template>
-      </UTabs>
+        <div class="popup-footer relative z-20 shrink-0 overflow-visible space-y-2 border-t border-default/60 pt-2">
+          <HubDestinations />
 
-      <HubDestinations />
-
-      <p class="shrink-0 text-center text-muted text-[0.65rem] leading-relaxed">
-        Not affiliated with VA.gov. Sign in at VA.gov first; endpoints may change when VA updates their site.
-        <span class="block opacity-70">Extension v{{ EXTENSION_VERSION }}</span>
-      </p>
+          <p class="popup-disclaimer text-center text-muted text-[0.65rem] leading-relaxed">
+            Not affiliated with VA.gov. Sign in at VA.gov first; endpoints may change when VA updates their site.
+            <span class="block opacity-70">Extension v{{ EXTENSION_VERSION }}</span>
+          </p>
+        </div>
+      </div>
     </div>
   </UApp>
 </template>

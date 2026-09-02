@@ -1,42 +1,19 @@
 import type { VaFetchResponse } from './messaging'
+import { fetchViaVaGovTab, parseVaResponse, VA_FETCH_HEADERS } from './vaGovTabFetch'
 
-const VA_FETCH_HEADERS: Record<string, string> = {
-  Accept: 'application/json',
-  'X-Key-Inflection': 'camel'
-}
-
-async function vaFetch(url: string): Promise<VaFetchResponse> {
-  if (!url.startsWith('https://api.va.gov/')) {
-    return { ok: false, status: 0, error: 'Only api.va.gov URLs are allowed' }
-  }
-
+async function vaFetchDirect(url: string): Promise<VaFetchResponse> {
   try {
     const response = await fetch(url, {
       method: 'GET',
       credentials: 'include',
-      headers: VA_FETCH_HEADERS
+      headers: {
+        ...VA_FETCH_HEADERS,
+        Referer: 'https://www.va.gov/'
+      }
     })
 
     const text = await response.text()
-    let data: unknown = null
-    if (text) {
-      try {
-        data = JSON.parse(text)
-      } catch {
-        data = { raw: text.slice(0, 500) }
-      }
-    }
-
-    if (!response.ok) {
-      const message = typeof (data as { errors?: Array<{ detail?: string }> })?.errors?.[0]?.detail === 'string'
-        ? (data as { errors: Array<{ detail: string }> }).errors[0].detail
-        : response.status === 401
-          ? 'Not signed in to VA.gov — open VA.gov and sign in first.'
-          : `VA API returned ${response.status}`
-      return { ok: false, status: response.status, error: message }
-    }
-
-    return { ok: true, status: response.status, data }
+    return parseVaResponse(response.status, text)
   } catch (error) {
     return {
       ok: false,
@@ -44,6 +21,25 @@ async function vaFetch(url: string): Promise<VaFetchResponse> {
       error: error instanceof Error ? error.message : 'Network error talking to VA API'
     }
   }
+}
+
+async function vaFetch(url: string): Promise<VaFetchResponse> {
+  if (!url.startsWith('https://api.va.gov/')) {
+    return { ok: false, status: 0, error: 'Only api.va.gov URLs are allowed' }
+  }
+
+  const direct = await vaFetchDirect(url)
+  if (direct.ok) return direct
+
+  // Extension-origin fetch often gets 401/403 even when a VA.gov tab is signed in.
+  // Retry from an open VA.gov tab so cookies attach the same way as the website.
+  if (direct.status === 401 || direct.status === 403) {
+    const viaTab = await fetchViaVaGovTab(url)
+    if (viaTab?.ok) return viaTab
+    if (viaTab && !viaTab.ok) return viaTab
+  }
+
+  return direct
 }
 
 export async function fetchVaClaimsList() {

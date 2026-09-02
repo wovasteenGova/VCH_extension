@@ -6,9 +6,9 @@ const hubUrl = process.env.VITE_VCH_HUB_URL || 'https://www.veteranscentralhub.c
 export default defineConfig({
   modules: ['@wxt-dev/module-vue'],
   manifest: {
-    name: 'Veterans Central Hub',
-    description: 'Track VA claims from your signed-in VA.gov session, plus quick access to Veterans Central Hub.',
-    permissions: ['storage', 'cookies'],
+    name: 'VCH Web Extension',
+    description: 'VCH Web Extension — VA.gov tools, Hub, and ClaimBuilder shortcuts from your browser.',
+    permissions: ['storage', 'cookies', 'scripting'],
     host_permissions: [
       'https://api.va.gov/*',
       'https://www.va.gov/*',
@@ -16,10 +16,11 @@ export default defineConfig({
       'https://veteranscentralhub.com/*',
       'https://*.veteranscentralhub.com/*',
       'https://veteranscentralhub.us/*',
-      'https://*.veteranscentralhub.us/*'
+      'https://*.veteranscentralhub.us/*',
+      'https://claimbuilder.veteranscentralhub.com/*'
     ],
     action: {
-      default_title: 'VCH — Claim tracker & Hub'
+      default_title: 'VCH Web Extension'
     },
     externally_connectable: {
       matches: [

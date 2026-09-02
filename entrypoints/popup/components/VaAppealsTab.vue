@@ -2,12 +2,24 @@
 import { VA_SIGN_IN_PAGE } from '@/shared/vaEndpoints'
 import { fetchVaAppeals, formatVaDate } from '@/shared/vaClient'
 import { parseVaAppealsList, type ParsedVaAppeal } from '@/shared/vaAppealParse'
+import { readVaDeviceCache, saveVaAppealsCache } from '@/shared/vaDeviceCache'
+import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
 
 const loading = ref(false)
 const error = ref<string | null>(null)
+const isStale = ref(false)
+const lastSyncedAt = ref<string | null>(null)
 const rows = ref<ParsedVaAppeal[]>([])
 
 const openCount = computed(() => rows.value.filter(row => row.active).length)
+
+async function hydrateAppealsFromDevice() {
+  const cache = await readVaDeviceCache()
+  lastSyncedAt.value = cache.lastSyncedAt
+  if (!cache.appeals.length) return false
+  rows.value = cache.appeals
+  return true
+}
 
 async function loadAppeals() {
   loading.value = true
@@ -17,25 +29,37 @@ async function loadAppeals() {
   loading.value = false
 
   if (!response.ok) {
+    const restored = await hydrateAppealsFromDevice()
+    if (restored) {
+      isStale.value = true
+      error.value = null
+      return
+    }
+    isStale.value = false
     error.value = response.error
     rows.value = []
     return
   }
 
   rows.value = parseVaAppealsList(response.data)
+  isStale.value = false
+  await saveVaAppealsCache(rows.value)
+  const cache = await readVaDeviceCache()
+  lastSyncedAt.value = cache.lastSyncedAt
 }
 
 function openVaSignIn() {
   void browser.tabs.create({ url: VA_SIGN_IN_PAGE })
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await hydrateAppealsFromDevice()
   void loadAppeals()
 })
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-3">
+  <div class="flex flex-col gap-3 pb-1">
     <div class="flex items-center justify-between gap-2">
       <div>
         <p class="font-medium text-sm text-highlighted">
@@ -56,8 +80,14 @@ onMounted(() => {
       />
     </div>
 
+    <VaStaleSyncBanner
+      v-if="isStale"
+      :last-synced-at="lastSyncedAt"
+      @sign-in="openVaSignIn"
+    />
+
     <UAlert
-      v-if="error"
+      v-if="error && !rows.length"
       color="warning"
       variant="soft"
       icon="i-lucide-triangle-alert"
@@ -68,11 +98,11 @@ onMounted(() => {
       </template>
     </UAlert>
 
-    <div v-else-if="loading" class="flex flex-1 items-center justify-center py-8">
+    <div v-if="loading && !rows.length" class="flex items-center justify-center py-12">
       <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-primary" />
     </div>
 
-    <ul v-else class="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
+    <ul v-else class="space-y-2">
       <li
         v-if="rows.length === 0"
         class="rounded-lg border border-dashed border-default p-4 text-center text-muted text-sm"

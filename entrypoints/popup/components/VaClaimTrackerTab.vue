@@ -12,14 +12,26 @@ import {
   parseVaClaim,
   type ParsedVaClaim
 } from '@/shared/vaClaimParse'
+import { readVaDeviceCache, saveVaClaimsCache } from '@/shared/vaDeviceCache'
+import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
 
 const loading = ref(false)
 const error = ref<string | null>(null)
+const isStale = ref(false)
+const lastSyncedAt = ref<string | null>(null)
 const claims = ref<ParsedVaClaim[]>([])
 const expandedId = ref<string | null>(null)
 const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
 const loadedDetailIds = ref<Set<string>>(new Set())
+
+async function hydrateClaimsFromDevice() {
+  const cache = await readVaDeviceCache()
+  lastSyncedAt.value = cache.lastSyncedAt
+  if (!cache.claims.length) return false
+  claims.value = cache.claims
+  return true
+}
 
 async function loadClaims() {
   loading.value = true
@@ -31,6 +43,13 @@ async function loadClaims() {
   loading.value = false
 
   if (!response.ok) {
+    const restored = await hydrateClaimsFromDevice()
+    if (restored) {
+      isStale.value = true
+      error.value = null
+      return
+    }
+    isStale.value = false
     error.value = response.error
     claims.value = []
     return
@@ -40,6 +59,11 @@ async function loadClaims() {
   claims.value = list
     .map(item => parseVaClaim(item))
     .filter(Boolean) as ParsedVaClaim[]
+
+  isStale.value = false
+  await saveVaClaimsCache(claims.value)
+  const cache = await readVaDeviceCache()
+  lastSyncedAt.value = cache.lastSyncedAt
 }
 
 function claimById(id: string) {
@@ -72,6 +96,7 @@ async function toggleDetail(claimId: string) {
 
   claims.value[index] = mergeClaimDetail(claims.value[index], response.data)
   loadedDetailIds.value.add(claimId)
+  await saveVaClaimsCache(claims.value)
 }
 
 function openVaSignIn() {
@@ -82,13 +107,14 @@ function openVaClaims() {
   void browser.tabs.create({ url: VA_CLAIMS_PAGE })
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await hydrateClaimsFromDevice()
   void loadClaims()
 })
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-3">
+  <div class="flex flex-col gap-3 pb-1">
     <div class="flex items-center justify-between gap-2">
       <p class="font-medium text-sm text-highlighted">
         Your VA claims
@@ -104,13 +130,19 @@ onMounted(() => {
       />
     </div>
 
+    <VaStaleSyncBanner
+      v-if="isStale"
+      :last-synced-at="lastSyncedAt"
+      @sign-in="openVaSignIn"
+    />
+
     <UAlert
-      v-if="error"
+      v-if="error && !claims.length"
       color="warning"
       variant="soft"
       icon="i-lucide-triangle-alert"
       :title="error"
-      description="Sign in at VA.gov in this browser, open Manage claims, then refresh here. Data stays in your browser — VCH does not store your VA password."
+      description="Open your VA claims list in this browser first, then refresh here. Ratings and Appeals may work before that. Data stays in your browser — VCH does not store your VA password."
     >
       <template #actions>
         <UButton size="xs" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />
@@ -118,18 +150,18 @@ onMounted(() => {
       </template>
     </UAlert>
 
-    <div v-else-if="loading" class="flex flex-1 items-center justify-center py-8">
+    <div v-if="loading && !claims.length" class="flex items-center justify-center py-12">
       <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-primary" />
     </div>
 
-    <div v-else-if="claims.length === 0" class="space-y-3 rounded-lg border border-dashed border-default p-4 text-center">
+    <div v-else-if="!claims.length && !error && !isStale" class="space-y-3 rounded-lg border border-dashed border-default p-4 text-center">
       <p class="text-muted text-sm">
         No claims returned. If you have open claims, sign in at VA.gov and visit your claims list first.
       </p>
       <UButton block size="sm" color="primary" label="Open VA.gov claims" @click="openVaClaims" />
     </div>
 
-    <ul v-else class="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
+    <ul v-if="claims.length" class="space-y-2">
       <li
         v-for="claim in claims"
         :key="claim.id"

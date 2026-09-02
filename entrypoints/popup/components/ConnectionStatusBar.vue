@@ -7,19 +7,47 @@ import {
   probeVaSession,
   type ConnectionState
 } from '@/shared/connectionStatus'
+import { formatLastSynced, readVaCacheMeta } from '@/shared/vaDeviceCache'
 
 const loading = ref(true)
 const hub = ref<ConnectionState>({ connected: false, label: 'Checking…' })
 const va = ref<ConnectionState>({ connected: false, label: 'Checking…' })
+const lastSyncedAt = ref<string | null>(null)
+const hasSavedVaData = ref(false)
+
+const vaChipLabel = computed(() => {
+  if (va.value.connected) {
+    return va.value.label === 'Active' ? 'VA linked' : va.value.label
+  }
+  if (hasSavedVaData.value) return 'Saved on device'
+  return 'VA sign-in'
+})
+
+const vaChipTitle = computed(() => {
+  if (va.value.connected) {
+    return `VA.gov: ${va.value.label === 'Active' ? 'Linked' : va.value.label}`
+  }
+  const synced = formatLastSynced(lastSyncedAt.value)
+  if (hasSavedVaData.value && synced) {
+    return `Last synced ${synced}. Sign in at VA.gov to refresh.`
+  }
+  if (hasSavedVaData.value) {
+    return 'Saved VA data on this device. Sign in at VA.gov to refresh.'
+  }
+  return 'Sign in at VA.gov for claim data'
+})
 
 async function refresh() {
   loading.value = true
-  const [hubState, vaState] = await Promise.all([
+  const [hubState, vaState, cacheMeta] = await Promise.all([
     probeHubSession(),
-    probeVaSession()
+    probeVaSession(),
+    readVaCacheMeta()
   ])
   hub.value = hubState
   va.value = vaState
+  lastSyncedAt.value = cacheMeta.lastSyncedAt
+  hasSavedVaData.value = cacheMeta.hasAny
   loading.value = false
 }
 
@@ -73,8 +101,10 @@ defineExpose({ refresh })
       class="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 transition"
       :class="va.connected
         ? 'border-default/80 bg-elevated/50 text-highlighted'
-        : 'border-warning/40 bg-warning/10 text-warning hover:bg-warning/15'"
-      :title="va.connected ? `VA.gov: ${va.label}` : 'Sign in at VA.gov for claim data'"
+        : hasSavedVaData
+          ? 'border-default/80 bg-elevated/40 text-highlighted'
+          : 'border-warning/40 bg-warning/10 text-warning hover:bg-warning/15'"
+      :title="vaChipTitle"
       @click="onVaClick"
     >
       <UIcon
@@ -82,16 +112,11 @@ defineExpose({ refresh })
         class="size-3.5 shrink-0 opacity-80"
       />
       <UIcon
-        :name="va.connected ? 'i-lucide-check' : 'i-lucide-log-in'"
+        :name="va.connected ? 'i-lucide-check' : hasSavedVaData ? 'i-lucide-hard-drive' : 'i-lucide-log-in'"
         class="size-3 shrink-0 opacity-80"
       />
       <span class="truncate text-xs">
-        <template v-if="va.connected">
-          {{ va.label === 'Active' ? 'VA linked' : va.label }}
-        </template>
-        <template v-else>
-          VA sign-in
-        </template>
+        {{ vaChipLabel }}
       </span>
     </button>
 

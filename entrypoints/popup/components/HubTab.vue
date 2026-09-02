@@ -15,7 +15,7 @@ function openUrl(url: string) {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-3">
+  <div class="flex flex-col gap-3 pb-1">
     <div class="space-y-2">
       <HubProductButton
         primary

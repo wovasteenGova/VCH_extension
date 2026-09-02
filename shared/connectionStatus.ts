@@ -7,7 +7,12 @@ import {
   VCH_HUB_ORIGINS
 } from './hubOrigins'
 import { hubUrl } from './urls'
-import { fetchVaAppeals, fetchVaUser } from './vaClient'
+import {
+  fetchVaAppeals,
+  fetchVaClaimsList,
+  fetchVaRatedDisabilities,
+  fetchVaUser
+} from './vaClient'
 
 export type ConnectionState = {
   connected: boolean
@@ -46,20 +51,23 @@ function readVaProfileName(payload: unknown): string | null {
 }
 
 export async function probeVaSession(): Promise<ConnectionState> {
-  const response = await fetchVaUser()
-  if (response.ok) {
-    const name = readVaProfileName(response.data)
-    return {
-      connected: true,
-      label: name || 'Active'
-    }
-  }
+  // benefits_claims is the strictest — often needs track-claims open on VA.gov first.
+  // Probe lighter endpoints first so the chip is not a false negative.
+  const probes = [
+    fetchVaAppeals,
+    fetchVaRatedDisabilities,
+    fetchVaUser,
+    fetchVaClaimsList
+  ]
 
-  const appeals = await fetchVaAppeals()
-  if (appeals.ok) {
-    return {
-      connected: true,
-      label: 'Active'
+  for (const probe of probes) {
+    const response = await probe()
+    if (response.ok) {
+      if (probe === fetchVaUser) {
+        const name = readVaProfileName(response.data)
+        return { connected: true, label: name || 'Active' }
+      }
+      return { connected: true, label: 'Active' }
     }
   }
 
@@ -155,5 +163,5 @@ export function openVaSignIn() {
 }
 
 export function openHubSignIn() {
-  void browser.tabs.create({ url: hubUrlOnOrigin(getDetectedHubOrigin(), '/auth') })
+  void browser.tabs.create({ url: hubUrlOnOrigin(getDetectedHubOrigin(), '/?signin=1') })
 }

@@ -12,4 +12,5 @@ export const VA_ENDPOINTS = {
 } as const
 
 export const VA_CLAIMS_PAGE = 'https://www.va.gov/track-claims/your-claims/'
+export const VA_DISABILITY_RATING_PAGE = 'https://www.va.gov/disability/view-disability-rating/rating'
 export const VA_SIGN_IN_PAGE = 'https://www.va.gov/my-va/'
