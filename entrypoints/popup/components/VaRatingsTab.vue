@@ -49,7 +49,7 @@ const importBusy = ref(false)
 const importError = ref<string | null>(null)
 const importSuccess = ref<string | null>(null)
 const importPanelExpanded = ref(false)
-const importPreviewExpanded = ref(true)
+const importPreviewExpanded = ref(false)
 const claimBuilderSyncStatus = ref<'idle' | 'checking' | 'synced' | 'out_of_sync'>('idle')
 const claimBuilderSyncedAt = ref<string | null>(null)
 let claimBuilderSyncCheckToken = 0
@@ -163,7 +163,6 @@ function markClaimBuilderSynced(importedAt?: string | null) {
 
 function expandClaimBuilderImportPanel() {
   importPanelExpanded.value = true
-  importPreviewExpanded.value = true
   importSuccess.value = null
 }
 
