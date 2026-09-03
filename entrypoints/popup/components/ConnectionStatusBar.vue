@@ -7,47 +7,59 @@ import {
   probeVaSession,
   type ConnectionState
 } from '@/shared/connectionStatus'
-import { formatLastSynced, readVaCacheMeta } from '@/shared/vaDeviceCache'
+import {
+  cacheMetaFromDevice,
+  describeSavedVaCache,
+  readVaCacheMeta,
+  subscribeVaDeviceCache,
+  type VaCacheMeta
+} from '@/shared/vaDeviceCache'
 
 const loading = ref(true)
 const hub = ref<ConnectionState>({ connected: false, label: 'Checking…' })
 const va = ref<ConnectionState>({ connected: false, label: 'Checking…' })
-const lastSyncedAt = ref<string | null>(null)
-const hasSavedVaData = ref(false)
+const cacheMeta = ref<VaCacheMeta>({
+  lastSyncedAt: null,
+  vaLabel: null,
+  hasClaims: false,
+  hasAppeals: false,
+  hasRatings: false,
+  hasProfile: false,
+  hasAny: false
+})
+
+const savedLabel = computed(() => describeSavedVaCache(cacheMeta.value))
 
 const vaChipLabel = computed(() => {
   if (va.value.connected) {
     return va.value.label === 'Active' ? 'VA linked' : va.value.label
   }
-  if (hasSavedVaData.value) return 'Saved on device'
+  if (cacheMeta.value.hasAny) return savedLabel.value.label
   return 'VA sign-in'
 })
 
 const vaChipTitle = computed(() => {
   if (va.value.connected) {
-    return `VA.gov: ${va.value.label === 'Active' ? 'Linked' : va.value.label}`
+    const live = `VA.gov: ${va.value.label === 'Active' ? 'Linked' : va.value.label}`
+    return cacheMeta.value.hasAny ? `${live}. ${savedLabel.value.title}` : live
   }
-  const synced = formatLastSynced(lastSyncedAt.value)
-  if (hasSavedVaData.value && synced) {
-    return `Last synced ${synced}. Sign in at VA.gov to refresh.`
-  }
-  if (hasSavedVaData.value) {
-    return 'Saved VA data on this device. Sign in at VA.gov to refresh.'
-  }
-  return 'Sign in at VA.gov for claim data'
+  return savedLabel.value.title
 })
+
+function applyMeta(meta: VaCacheMeta) {
+  cacheMeta.value = meta
+}
 
 async function refresh() {
   loading.value = true
-  const [hubState, vaState, cacheMeta] = await Promise.all([
+  const [hubState, vaState, meta] = await Promise.all([
     probeHubSession(),
     probeVaSession(),
     readVaCacheMeta()
   ])
   hub.value = hubState
   va.value = vaState
-  lastSyncedAt.value = cacheMeta.lastSyncedAt
-  hasSavedVaData.value = cacheMeta.hasAny
+  applyMeta(meta)
   loading.value = false
 }
 
@@ -60,6 +72,8 @@ function onVaClick() {
 }
 
 onMounted(() => {
+  const stop = subscribeVaDeviceCache((cache) => applyMeta(cacheMetaFromDevice(cache)))
+  onUnmounted(stop)
   void refresh()
 })
 
@@ -101,7 +115,7 @@ defineExpose({ refresh })
       class="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 transition"
       :class="va.connected
         ? 'border-default/80 bg-elevated/50 text-highlighted'
-        : hasSavedVaData
+        : cacheMeta.hasAny
           ? 'border-default/80 bg-elevated/40 text-highlighted'
           : 'border-warning/40 bg-warning/10 text-warning hover:bg-warning/15'"
       :title="vaChipTitle"
@@ -112,7 +126,7 @@ defineExpose({ refresh })
         class="size-3.5 shrink-0 opacity-80"
       />
       <UIcon
-        :name="va.connected ? 'i-lucide-check' : hasSavedVaData ? 'i-lucide-hard-drive' : 'i-lucide-log-in'"
+        :name="va.connected ? 'i-lucide-check' : cacheMeta.hasAny ? 'i-lucide-hard-drive' : 'i-lucide-log-in'"
         class="size-3 shrink-0 opacity-80"
       />
       <span class="truncate text-xs">

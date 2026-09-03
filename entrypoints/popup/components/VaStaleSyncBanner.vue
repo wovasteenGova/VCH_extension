@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { formatLastSynced } from '@/shared/vaDeviceCache'
 
-defineProps<{
+withDefaults(defineProps<{
   lastSyncedAt?: string | null
-}>()
+  liveSession?: boolean
+}>(), {
+  liveSession: false
+})
 
 defineEmits<{
   signIn: []
@@ -12,6 +15,17 @@ defineEmits<{
 
 <template>
   <UAlert
+    v-if="liveSession"
+    color="neutral"
+    variant="soft"
+    icon="i-lucide-hard-drive"
+    title="Showing saved VA data"
+    :description="formatLastSynced(lastSyncedAt)
+      ? `Last saved on this device ${formatLastSynced(lastSyncedAt)}. Use refresh if you want to pull again.`
+      : 'Showing data saved on this device.'"
+  />
+  <UAlert
+    v-else
     color="warning"
     variant="soft"
     icon="i-lucide-cloud-off"

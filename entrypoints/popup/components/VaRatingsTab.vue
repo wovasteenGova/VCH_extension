@@ -12,6 +12,7 @@ import { parseVaRatingsResponse, sortRatingsByPercent, type ParsedVaRating } fro
 import type { ParsedVaUserProfileForImport } from '@/shared/vaUserProfileParse'
 import { hydrateVaProfileFromDevice, refreshVaProfileForImport } from '@/shared/vaUserProfileFetch'
 import { buildVaImportPreviewItems, formatVaImportSuccessMessage } from '@/shared/vaImportPreview'
+import { persistLiveVaCaches } from '@/shared/vaCacheSync'
 import { readVaDeviceCache, saveVaRatingsCache } from '@/shared/vaDeviceCache'
 import { CLAIMBUILDER_URL } from '@/shared/urls'
 import {
@@ -185,7 +186,7 @@ async function loadRatings() {
     const restored = await hydrateRatingsFromDevice()
     hasCachedRatings.value = restored
     if (restored || hasRatingsData.value) {
-      isStale.value = true
+      isStale.value = !vaSession.value.connected
       error.value = null
       return
     }
@@ -209,6 +210,7 @@ async function loadRatings() {
   })
   hasCachedRatings.value = true
   ratingsGate.value = { available: true, source: 'live' }
+  await persistLiveVaCaches()
   const cache = await readVaDeviceCache()
   lastSyncedAt.value = cache.lastSyncedAt
 }
@@ -276,7 +278,7 @@ watch(unlocked, async (isUnlocked) => {
     const restored = await hydrateRatingsFromDevice()
     hasCachedRatings.value = restored
     if (restored) {
-      isStale.value = true
+      isStale.value = !vaSession.value.connected
       error.value = null
     }
     importProfilePreview.value = await hydrateVaProfileFromDevice()

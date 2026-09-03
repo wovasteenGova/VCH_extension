@@ -51,10 +51,10 @@ const tabs = [
 
       <div class="flex min-h-0 flex-1 flex-col overflow-visible">
         <div class="popup-tab-scroll custom-scrollbar relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <VaClaimTrackerTab v-if="activeTab === 'claims'" />
-          <VaRatingsTab v-else-if="activeTab === 'ratings'" />
-          <VaAppealsTab v-else-if="activeTab === 'appeals'" />
-          <HubTab v-else-if="activeTab === 'hub'" />
+          <VaClaimTrackerTab v-show="activeTab === 'claims'" />
+          <VaRatingsTab v-show="activeTab === 'ratings'" />
+          <VaAppealsTab v-show="activeTab === 'appeals'" />
+          <HubTab v-show="activeTab === 'hub'" />
         </div>
 
         <div class="popup-footer relative z-20 shrink-0 overflow-visible space-y-2 border-t border-default/60 pt-2">

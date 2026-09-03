@@ -37,7 +37,18 @@ function parseVaResponse(status: number, text: string): VaFetchResponse {
   return { ok: false, status, error: message }
 }
 
-async function findVaGovTabId(): Promise<number | null> {
+const TRACK_CLAIMS_TAB_PATTERNS = [
+  'https://www.va.gov/track-claims/*',
+  'https://va.gov/track-claims/*'
+]
+
+async function findVaGovTabId(preferTrackClaims = false): Promise<number | null> {
+  if (preferTrackClaims) {
+    const preferred = await browser.tabs.query({ url: TRACK_CLAIMS_TAB_PATTERNS })
+    const preferredMatch = preferred.find(tab => typeof tab.id === 'number')
+    if (preferredMatch?.id != null) return preferredMatch.id
+  }
+
   const tabs = await browser.tabs.query({ url: VA_GOV_TAB_PATTERNS })
   const match = tabs.find(tab => typeof tab.id === 'number')
   return match?.id ?? null
@@ -45,7 +56,8 @@ async function findVaGovTabId(): Promise<number | null> {
 
 /** Run fetch inside a signed-in VA.gov tab so session cookies attach like the website. */
 export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | null> {
-  const tabId = await findVaGovTabId()
+  const preferTrackClaims = url.includes('benefits_claims') || url.includes('/v0/appeals')
+  const tabId = await findVaGovTabId(preferTrackClaims)
   if (tabId == null) return null
 
   try {

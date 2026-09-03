@@ -239,11 +239,15 @@ export default defineContentScript({
       syncBtn.textContent = 'Sync'
 
       if (result.ok) {
-        subtitleEl.textContent = result.count
-          ? `Saved ${result.count} claim${result.count === 1 ? '' : 's'} on this device`
-          : 'Synced — no open claims returned'
+        const claimPart = result.count
+          ? `${result.count} claim${result.count === 1 ? '' : 's'}`
+          : 'no new claims'
+        const appealPart = result.appeals
+          ? `, ${result.appeals} appeal${result.appeals === 1 ? '' : 's'}`
+          : ''
+        subtitleEl.textContent = `Saved ${claimPart}${appealPart} on this device`
         subtitleEl.className = 'subtitle status-ok'
-        detailEl.textContent = 'Open the extension popup for ratings, appeals, and Hub shortcuts.'
+        detailEl.textContent = 'Open the extension popup — claims, ratings, and appeals stay on this device.'
         return
       }
 

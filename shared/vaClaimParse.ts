@@ -229,3 +229,15 @@ export function mergeClaimDetail(listClaim: ParsedVaClaim, detailRaw: unknown): 
   const parsed = parseVaClaim(detailRaw, listClaim.id)
   return parsed ?? listClaim
 }
+
+/** Union by id. Never drop cached claims just because a later fetch returned a shorter list. */
+export function mergeParsedClaims(current: ParsedVaClaim[], incoming: ParsedVaClaim[]): ParsedVaClaim[] {
+  if (!incoming.length) return current
+  if (!current.length) return incoming
+  const byId = new Map(current.map(claim => [claim.id, claim]))
+  for (const claim of incoming) {
+    const existing = byId.get(claim.id)
+    byId.set(claim.id, existing ? { ...existing, ...claim } : claim)
+  }
+  return [...byId.values()]
+}

@@ -4,15 +4,17 @@ import {
   fetchVaClaimDetail,
   fetchVaClaimsList,
   formatVaDate,
-  unwrapVaData
+  unwrapVaList
 } from '@/shared/vaClient'
 import {
   formatVaDateRange,
   mergeClaimDetail,
+  mergeParsedClaims,
   parseVaClaim,
   type ParsedVaClaim
 } from '@/shared/vaClaimParse'
-import { readVaDeviceCache, readVaCacheMeta, saveVaClaimsCache } from '@/shared/vaDeviceCache'
+import { probeVaSession } from '@/shared/connectionStatus'
+import { isRecentVaDeviceSync, readVaDeviceCache, readVaCacheMeta, saveVaClaimsCache, subscribeVaDeviceCache } from '@/shared/vaDeviceCache'
 import { hasOpenVaGovTab } from '@/shared/vaGovTabFetch'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
 
@@ -23,11 +25,18 @@ const lastSyncedAt = ref<string | null>(null)
 const hasClaimsCache = ref(false)
 const hasOtherVaCache = ref(false)
 const vaGovTabOpen = ref(false)
+const vaLiveSession = ref(false)
 const claims = ref<ParsedVaClaim[]>([])
 const expandedId = ref<string | null>(null)
 const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
 const loadedDetailIds = ref<Set<string>>(new Set())
+
+function markCacheFreshIfPossible() {
+  if (vaLiveSession.value || vaGovTabOpen.value || isRecentVaDeviceSync(lastSyncedAt.value)) {
+    isStale.value = false
+  }
+}
 
 async function refreshDeviceCacheMeta() {
   const meta = await readVaCacheMeta()
@@ -35,6 +44,7 @@ async function refreshDeviceCacheMeta() {
   hasOtherVaCache.value = meta.hasAny && !meta.hasClaims
   lastSyncedAt.value = meta.lastSyncedAt
   vaGovTabOpen.value = await hasOpenVaGovTab()
+  markCacheFreshIfPossible()
 }
 
 async function hydrateClaimsFromDevice() {
@@ -60,6 +70,10 @@ const showClaimsNotSyncedInfo = computed(() =>
   !claims.value.length && !isStale.value && !hasClaimsCache.value && hasOtherVaCache.value
 )
 
+const showCachedClaimsRestoreHint = computed(() =>
+  hasClaimsCache.value && !claims.value.length && !isStale.value
+)
+
 const claimsErrorDescription = computed(() => {
   if (!vaGovTabOpen.value) {
     return 'No claims saved on this device yet. Open Track claims on VA.gov in this browser, sign in, let your list load, then refresh here or use the VCH bar at the bottom of that page.'
@@ -68,16 +82,18 @@ const claimsErrorDescription = computed(() => {
   return 'VA.gov is open, but claims are not authorized yet. Open Track claims, wait for your list to load, then refresh here or tap Sync on the VCH bar at the bottom of that page.'
 })
 
-const claimsNotSyncedDescription = computed(() =>
-  'Ratings or appeals are saved on this device, but claims have not synced yet. Open Track claims on VA.gov in this browser, wait for your list to load, then refresh here or use the VCH bar at the bottom of that page.'
-)
+const claimsNotSyncedDescription = computed(() => {
+  if (hasClaimsCache.value) {
+    return 'Claims are saved on this device but did not load in this view yet. Tap the restore icon next to refresh, or open Track claims on VA.gov and sync again.'
+  }
+  return 'Ratings or appeals are saved on this device, but claims have not synced yet. Open Track claims on VA.gov in this browser, wait for your list to load, then tap Sync on the VCH bar at the bottom of that page.'
+})
 
 async function restoreClaimsFromDevice() {
   const restored = await hydrateClaimsFromDevice()
   await refreshDeviceCacheMeta()
   if (restored || claims.value.length > 0) {
-    isStale.value = true
-    error.value = null
+    applyCachedClaims(claims.value)
   }
   return restored || claims.value.length > 0
 }
@@ -85,8 +101,8 @@ async function restoreClaimsFromDevice() {
 function applyCachedClaims(fallbackClaims: ParsedVaClaim[]) {
   if (!fallbackClaims.length) return false
   claims.value = fallbackClaims
-  isStale.value = true
   error.value = null
+  isStale.value = !(vaLiveSession.value || vaGovTabOpen.value || isRecentVaDeviceSync(lastSyncedAt.value))
   return true
 }
 
@@ -99,6 +115,7 @@ async function loadClaims() {
   loading.value = true
   // Keep cached rows visible while refreshing; only clear errors when we have cache.
   if (cachedClaims.length) {
+    lastSyncedAt.value = cacheBefore.lastSyncedAt
     applyCachedClaims(cachedClaims)
   } else {
     error.value = null
@@ -106,56 +123,83 @@ async function loadClaims() {
     loadedDetailIds.value = new Set()
   }
 
-  const response = await fetchVaClaimsList()
-  loading.value = false
+  try {
+    const response = await fetchVaClaimsList()
+    loading.value = false
 
-  if (!response.ok) {
-    await refreshDeviceCacheMeta()
-    if (applyCachedClaims(cachedClaims) || (await hydrateClaimsFromDevice())) {
+    if (!response.ok) {
+      await refreshDeviceCacheMeta()
+      if (applyCachedClaims(cachedClaims) || (await hydrateClaimsFromDevice())) {
+        return
+      }
+      isStale.value = false
+      error.value = response.error
+      claims.value = []
       return
     }
-    isStale.value = false
-    error.value = response.error
-    claims.value = []
-    return
-  }
 
-  const list = unwrapVaData<unknown[]>(response.data) || []
-  const parsed = list
-    .map(item => parseVaClaim(item))
-    .filter(Boolean) as ParsedVaClaim[]
+    const parsed = unwrapVaList(response.data)
+      .map(item => parseVaClaim(item))
+      .filter(Boolean) as ParsedVaClaim[]
+    const merged = mergeParsedClaims(cachedClaims, parsed)
 
-  if (parsed.length === 0) {
-    await refreshDeviceCacheMeta()
-    if (applyCachedClaims(cachedClaims) || (await hydrateClaimsFromDevice())) {
+    if (merged.length === 0) {
+      await refreshDeviceCacheMeta()
+      if (applyCachedClaims(cachedClaims) || (await hydrateClaimsFromDevice())) {
+        return
+      }
+      isStale.value = false
+      error.value = null
+      claims.value = []
       return
     }
-    claims.value = []
+
+    claims.value = merged
     isStale.value = false
     error.value = null
-    return
+    vaLiveSession.value = true
+    const saved = await saveVaClaimsCache(merged)
+    if (!saved) {
+      error.value = 'Loaded claims from VA.gov but could not save them on this device.'
+    }
+    await refreshDeviceCacheMeta()
+  } catch {
+    loading.value = false
+    await refreshDeviceCacheMeta()
+    if (!(applyCachedClaims(cachedClaims) || (await hydrateClaimsFromDevice()))) {
+      error.value = 'Could not read claims from VA.gov.'
+    }
   }
-
-  claims.value = parsed
-  isStale.value = false
-  error.value = null
-  await saveVaClaimsCache(claims.value)
-  await refreshDeviceCacheMeta()
 }
 
 async function bootstrapClaims() {
+  const session = await probeVaSession()
+  vaLiveSession.value = session.connected
   await refreshDeviceCacheMeta()
   const restored = await hydrateClaimsFromDevice()
   if (restored) {
-    isStale.value = true
     error.value = null
+    markCacheFreshIfPossible()
+    if (!vaLiveSession.value && !vaGovTabOpen.value && !isRecentVaDeviceSync(lastSyncedAt.value)) {
+      isStale.value = true
+    }
   }
   await loadClaims()
-  if (hasClaimsCache.value && !claims.value.length) {
+  if (!claims.value.length) {
     await restoreClaimsFromDevice()
   }
   await refreshDeviceCacheMeta()
 }
+
+onMounted(() => {
+  const stop = subscribeVaDeviceCache((cache) => {
+    lastSyncedAt.value = cache.lastSyncedAt
+    if (cache.claims.length) applyCachedClaims(cache.claims)
+    void refreshDeviceCacheMeta()
+  })
+  onUnmounted(stop)
+  void bootstrapClaims()
+})
 
 function claimById(id: string) {
   return claims.value.find(claim => claim.id === id) ?? null
@@ -197,10 +241,6 @@ function openVaSignIn() {
 function openVaClaims() {
   openVaClaimsPage()
 }
-
-onMounted(() => {
-  void bootstrapClaims()
-})
 </script>
 
 <template>
@@ -234,6 +274,7 @@ onMounted(() => {
     <VaStaleSyncBanner
       v-if="isStale"
       :last-synced-at="lastSyncedAt"
+      :live-session="vaLiveSession || vaGovTabOpen"
       @sign-in="openVaSignIn"
     />
 
@@ -268,7 +309,10 @@ onMounted(() => {
       <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-primary" />
     </div>
 
-    <div v-else-if="!claims.length && !error && !isStale" class="space-y-3 rounded-lg border border-dashed border-default p-4 text-center">
+    <div
+      v-else-if="!claims.length && !error && !isStale && !showClaimsNotSyncedInfo && !showSignInWall"
+      class="space-y-3 rounded-lg border border-dashed border-default p-4 text-center"
+    >
       <p class="text-muted text-sm">
         No claims returned. If you have open claims, sign in at VA.gov and visit your claims list first.
       </p>

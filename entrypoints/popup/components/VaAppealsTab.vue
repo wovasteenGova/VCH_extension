@@ -1,63 +1,125 @@
 <script setup lang="ts">
+import { persistLiveVaCaches } from '@/shared/vaCacheSync'
+import { probeVaSession } from '@/shared/connectionStatus'
 import { openVaSignIn } from '@/shared/vaSignInNavigation'
 import { fetchVaAppeals, formatVaDate } from '@/shared/vaClient'
 import { parseVaAppealsList, type ParsedVaAppeal } from '@/shared/vaAppealParse'
-import { readVaDeviceCache, saveVaAppealsCache } from '@/shared/vaDeviceCache'
+import {
+  cacheMetaFromDevice,
+  isRecentVaDeviceSync,
+  readVaDeviceCache,
+  saveVaAppealsCache,
+  subscribeVaDeviceCache
+} from '@/shared/vaDeviceCache'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
 
 const loading = ref(false)
 const error = ref<string | null>(null)
 const isStale = ref(false)
 const lastSyncedAt = ref<string | null>(null)
+const hasAppealsCache = ref(false)
+const hasOtherVaCache = ref(false)
+const vaLiveSession = ref(false)
 const rows = ref<ParsedVaAppeal[]>([])
 
 const openCount = computed(() => rows.value.filter(row => row.active).length)
 
+const showNotPulledYet = computed(() =>
+  !rows.value.length && !hasAppealsCache.value && hasOtherVaCache.value && !loading.value
+)
+
+const showSignInPrompt = computed(() =>
+  !rows.value.length && !hasAppealsCache.value && !hasOtherVaCache.value && Boolean(error.value) && !loading.value
+)
+
+function applyCache(appeals: ParsedVaAppeal[], syncedAt: string | null) {
+  if (!appeals.length) return false
+  rows.value = appeals
+  lastSyncedAt.value = syncedAt
+  hasAppealsCache.value = true
+  error.value = null
+  isStale.value = !(vaLiveSession.value || isRecentVaDeviceSync(syncedAt))
+  return true
+}
+
+async function refreshMeta() {
+  const cache = await readVaDeviceCache()
+  const meta = cacheMetaFromDevice(cache)
+  hasAppealsCache.value = meta.hasAppeals
+  hasOtherVaCache.value = meta.hasAny && !meta.hasAppeals
+  lastSyncedAt.value = cache.lastSyncedAt
+}
+
 async function hydrateAppealsFromDevice() {
   const cache = await readVaDeviceCache()
   lastSyncedAt.value = cache.lastSyncedAt
+  hasAppealsCache.value = cache.appeals.length > 0
+  hasOtherVaCache.value = cacheMetaFromDevice(cache).hasAny && !cache.appeals.length
   if (!cache.appeals.length) return false
   rows.value = cache.appeals
   return true
 }
 
 async function loadAppeals() {
+  const cacheBefore = await readVaDeviceCache()
+  const cached = cacheBefore.appeals.length ? cacheBefore.appeals : [...rows.value]
+
   loading.value = true
-  error.value = null
+  if (cached.length) applyCache(cached, cacheBefore.lastSyncedAt)
 
   const response = await fetchVaAppeals()
   loading.value = false
 
   if (!response.ok) {
-    const restored = await hydrateAppealsFromDevice()
-    if (restored || rows.value.length > 0) {
-      isStale.value = true
+    await refreshMeta()
+    if (applyCache(cached, cacheBefore.lastSyncedAt) || (await hydrateAppealsFromDevice())) {
       error.value = null
+      isStale.value = !(vaLiveSession.value || isRecentVaDeviceSync(lastSyncedAt.value))
       return
     }
     isStale.value = false
     error.value = response.error
-    rows.value = []
     return
   }
 
-  rows.value = parseVaAppealsList(response.data)
+  const parsed = parseVaAppealsList(response.data)
+  if (parsed.length === 0) {
+    await refreshMeta()
+    if (applyCache(cached, cacheBefore.lastSyncedAt) || (await hydrateAppealsFromDevice())) {
+      return
+    }
+    isStale.value = false
+    error.value = null
+    return
+  }
+
+  rows.value = parsed
   isStale.value = false
-  await saveVaAppealsCache(rows.value)
-  const cache = await readVaDeviceCache()
-  lastSyncedAt.value = cache.lastSyncedAt
+  error.value = null
+  await saveVaAppealsCache(parsed)
+  await persistLiveVaCaches()
+  await refreshMeta()
 }
 
 async function bootstrapAppeals() {
+  const session = await probeVaSession()
+  vaLiveSession.value = session.connected
   const restored = await hydrateAppealsFromDevice()
   if (restored) {
-    isStale.value = true
     error.value = null
+    isStale.value = !(vaLiveSession.value || isRecentVaDeviceSync(lastSyncedAt.value))
   }
   await loadAppeals()
 }
 
+function applyIncomingCache(cache: { appeals: ParsedVaAppeal[], lastSyncedAt: string | null }) {
+  if (cache.appeals.length) applyCache(cache.appeals, cache.lastSyncedAt)
+  void refreshMeta()
+}
+
 onMounted(() => {
+  const stop = subscribeVaDeviceCache(applyIncomingCache)
+  onUnmounted(stop)
   void bootstrapAppeals()
 })
 </script>
@@ -85,17 +147,32 @@ onMounted(() => {
     </div>
 
     <VaStaleSyncBanner
-      v-if="isStale"
+      v-if="isStale && rows.length"
       :last-synced-at="lastSyncedAt"
+      :live-session="vaLiveSession"
       @sign-in="openVaSignIn"
     />
 
     <UAlert
-      v-if="error && !rows.length && !isStale"
+      v-if="showNotPulledYet"
+      color="neutral"
+      variant="soft"
+      icon="i-lucide-info"
+      title="Appeals not saved yet"
+      description="Ratings or claims are on this device, but appeals have not been pulled. Stay signed in at VA.gov and tap refresh, or open Track claims and tap Sync on the VCH bar."
+    >
+      <template #actions>
+        <UButton size="xs" color="primary" variant="soft" label="Refresh appeals" @click="loadAppeals" />
+      </template>
+    </UAlert>
+
+    <UAlert
+      v-else-if="showSignInPrompt"
       color="warning"
       variant="soft"
       icon="i-lucide-triangle-alert"
-      :title="error"
+      :title="error || 'Could not load appeals'"
+      description="Sign in at VA.gov so this tab can save appeals on your device. After that, they stay here even when you are signed out."
     >
       <template #actions>
         <UButton size="xs" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />
@@ -106,13 +183,7 @@ onMounted(() => {
       <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-primary" />
     </div>
 
-    <ul v-else class="space-y-2">
-      <li
-        v-if="rows.length === 0"
-        class="rounded-lg border border-dashed border-default p-4 text-center text-muted text-sm"
-      >
-        No appeals returned for this session.
-      </li>
+    <ul v-else-if="rows.length" class="space-y-2">
       <li
         v-for="row in rows"
         :key="row.id"
