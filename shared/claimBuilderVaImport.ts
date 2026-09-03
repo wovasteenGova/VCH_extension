@@ -28,6 +28,8 @@ export type ClaimBuilderVaImportResult = {
 export type ClaimBuilderVaImportSyncStatus = {
   synced: boolean
   importedAt: string | null
+  /** False when the server could not be reached — do not treat as out of sync. */
+  checked: boolean
 }
 
 export function buildClaimBuilderVaImportPayload(input: {
@@ -106,7 +108,7 @@ export async function checkClaimBuilderVaImportSync(
 ): Promise<ClaimBuilderVaImportSyncStatus> {
   const token = await readHubAccessToken()
   if (!token) {
-    return { synced: false, importedAt: null }
+    return { synced: false, importedAt: null, checked: false }
   }
 
   const base = CLAIMBUILDER_URL.replace(/\/$/, '')
@@ -122,12 +124,13 @@ export async function checkClaimBuilderVaImportSync(
   })
 
   if (!response.ok) {
-    return { synced: false, importedAt: null }
+    return { synced: false, importedAt: null, checked: false }
   }
 
   const body = await response.json().catch(() => ({})) as Record<string, unknown>
   return {
     synced: body.synced === true,
-    importedAt: typeof body.importedAt === 'string' ? body.importedAt : null
+    importedAt: typeof body.importedAt === 'string' ? body.importedAt : null,
+    checked: true
   }
 }

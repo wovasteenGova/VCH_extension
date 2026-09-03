@@ -49,6 +49,7 @@ const importBusy = ref(false)
 const importError = ref<string | null>(null)
 const importSuccess = ref<string | null>(null)
 const importPanelExpanded = ref(false)
+const importPreviewExpanded = ref(true)
 const claimBuilderSyncStatus = ref<'idle' | 'checking' | 'synced' | 'out_of_sync'>('idle')
 const claimBuilderSyncedAt = ref<string | null>(null)
 let claimBuilderSyncCheckToken = 0
@@ -120,9 +121,15 @@ const showClaimBuilderImportPanel = computed(() =>
 )
 
 async function refreshClaimBuilderSyncStatus() {
-  if (!unlocked.value || !hubCanImport.value || !hasRatingsData.value) {
-    claimBuilderSyncStatus.value = 'idle'
-    claimBuilderSyncedAt.value = null
+  if (!unlocked.value || !hasRatingsData.value) {
+    if (claimBuilderSyncStatus.value !== 'synced') {
+      claimBuilderSyncStatus.value = 'idle'
+      claimBuilderSyncedAt.value = null
+    }
+    return
+  }
+
+  if (!hubCanImport.value) {
     return
   }
 
@@ -132,15 +139,31 @@ async function refreshClaimBuilderSyncStatus() {
   const status = await checkClaimBuilderVaImportSync(currentImportPayload.value)
   if (token !== claimBuilderSyncCheckToken) return
 
+  if (!status.checked) {
+    claimBuilderSyncStatus.value = claimBuilderSyncStatus.value === 'synced'
+      ? 'synced'
+      : 'idle'
+    return
+  }
+
   claimBuilderSyncStatus.value = status.synced ? 'synced' : 'out_of_sync'
   claimBuilderSyncedAt.value = status.importedAt
   if (status.synced) {
     importPanelExpanded.value = false
+    importPreviewExpanded.value = false
   }
+}
+
+function markClaimBuilderSynced(importedAt?: string | null) {
+  claimBuilderSyncStatus.value = 'synced'
+  claimBuilderSyncedAt.value = importedAt ?? new Date().toISOString()
+  importPanelExpanded.value = false
+  importPreviewExpanded.value = false
 }
 
 function expandClaimBuilderImportPanel() {
   importPanelExpanded.value = true
+  importPreviewExpanded.value = true
   importSuccess.value = null
 }
 
@@ -311,7 +334,7 @@ async function populateClaimBuilderSettings() {
       appliedProfileFields: result.appliedProfileFields,
       conditionCount: result.conditionCount
     })
-    importPanelExpanded.value = false
+    markClaimBuilderSynced(result.importedAt)
     void refreshClaimBuilderSyncStatus()
     openClaimBuilder(true)
   } catch (caught) {
@@ -638,24 +661,37 @@ onUnmounted(() => {
 
           <div
             v-if="importPreviewItems.length"
-            class="space-y-1.5 rounded-md border border-default/70 bg-default/40 p-2.5"
+            class="rounded-md border border-default/70 bg-default/40 p-2.5"
           >
-            <p class="font-medium text-[0.65rem] text-highlighted">
-              Will send to ClaimBuilder
-            </p>
-            <ul class="max-h-36 space-y-1 overflow-y-auto overscroll-contain custom-scrollbar">
-              <li
-                v-for="item in importPreviewItems"
-                :key="item.id"
-                class="text-[0.65rem] leading-snug text-muted"
-              >
-                <span class="font-medium text-highlighted">{{ item.label }}</span>
-                <span v-if="item.detail"> — {{ item.detail }}</span>
-              </li>
-            </ul>
-            <p class="text-[0.6rem] leading-relaxed text-muted">
-              Matching claim names also get their current VA % updated for Increase filing. VCH does not send your VA password or home address. If VA provides an SSN, only the last four digits are sent.
-            </p>
+            <button
+              type="button"
+              class="flex w-full items-center justify-between gap-2 text-left"
+              @click="importPreviewExpanded = !importPreviewExpanded"
+            >
+              <span class="font-medium text-[0.65rem] text-highlighted">
+                Will send to ClaimBuilder
+                <span class="font-normal text-muted">({{ importPreviewItems.length }})</span>
+              </span>
+              <UIcon
+                :name="importPreviewExpanded ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                class="size-3.5 shrink-0 text-muted"
+              />
+            </button>
+            <div v-show="importPreviewExpanded" class="mt-1.5 space-y-1.5">
+              <ul class="max-h-36 space-y-1 overflow-y-auto overscroll-contain custom-scrollbar">
+                <li
+                  v-for="item in importPreviewItems"
+                  :key="item.id"
+                  class="text-[0.65rem] leading-snug text-muted"
+                >
+                  <span class="font-medium text-highlighted">{{ item.label }}</span>
+                  <span v-if="item.detail"> — {{ item.detail }}</span>
+                </li>
+              </ul>
+              <p class="text-[0.6rem] leading-relaxed text-muted">
+                Matching claim names also get their current VA % updated for Increase filing. VCH does not send your VA password or home address. If VA provides an SSN, only the last four digits are sent.
+              </p>
+            </div>
           </div>
 
           <p
