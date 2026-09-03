@@ -233,27 +233,34 @@ export default defineContentScript({
       subtitleEl.textContent = 'Syncing claims…'
       subtitleEl.className = 'subtitle'
 
-      const result = await syncClaimsFromVaPage()
-      syncing = false
-      syncBtn.disabled = false
-      syncBtn.textContent = 'Sync'
+      try {
+        const result = await syncClaimsFromVaPage()
 
-      if (result.ok) {
-        const claimPart = result.count
-          ? `${result.count} claim${result.count === 1 ? '' : 's'}`
-          : 'no new claims'
-        const appealPart = result.appeals
-          ? `, ${result.appeals} appeal${result.appeals === 1 ? '' : 's'}`
-          : ''
-        subtitleEl.textContent = `Saved ${claimPart}${appealPart} on this device`
-        subtitleEl.className = 'subtitle status-ok'
-        detailEl.textContent = 'Open the extension popup — claims, ratings, and appeals stay on this device.'
-        return
+        if (result.ok) {
+          const claimPart = result.count
+            ? `${result.count} claim${result.count === 1 ? '' : 's'}`
+            : 'no new claims'
+          const appealPart = result.appeals
+            ? `, ${result.appeals} appeal${result.appeals === 1 ? '' : 's'}`
+            : ''
+          subtitleEl.textContent = `Saved ${claimPart}${appealPart} on this device`
+          subtitleEl.className = 'subtitle status-ok'
+          detailEl.textContent = 'Open the extension popup — claims, ratings, and appeals stay on this device.'
+          return
+        }
+
+        subtitleEl.textContent = result.error || 'Could not sync claims'
+        subtitleEl.className = 'subtitle status-error'
+        detailEl.textContent = 'Make sure you are signed in and this claims page finished loading.'
+      } catch (error) {
+        subtitleEl.textContent = error instanceof Error ? error.message : 'Could not sync claims'
+        subtitleEl.className = 'subtitle status-error'
+        detailEl.textContent = 'Make sure you are signed in and this claims page finished loading.'
+      } finally {
+        syncing = false
+        syncBtn.disabled = false
+        syncBtn.textContent = 'Sync'
       }
-
-      subtitleEl.textContent = result.error || 'Could not sync claims'
-      subtitleEl.className = 'subtitle status-error'
-      detailEl.textContent = 'Make sure you are signed in and this claims page finished loading.'
     }
 
     syncBtn.addEventListener('click', () => {

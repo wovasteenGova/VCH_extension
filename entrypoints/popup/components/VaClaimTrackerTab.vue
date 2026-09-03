@@ -355,7 +355,17 @@ function openVaClaims() {
             color="error"
             variant="soft"
             :title="detailError"
-          />
+          >
+            <template #actions>
+              <UButton
+                size="xs"
+                color="primary"
+                variant="soft"
+                label="Open Track claims"
+                @click="openVaClaims"
+              />
+            </template>
+          </UAlert>
           <template v-else>
             <dl class="grid gap-2 text-xs">
               <div class="grid grid-cols-[6.5rem_1fr] gap-2">

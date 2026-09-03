@@ -25,6 +25,11 @@ export type ClaimBuilderVaImportResult = {
   conditionCount: number
 }
 
+export type ClaimBuilderVaImportSyncStatus = {
+  synced: boolean
+  importedAt: string | null
+}
+
 export function buildClaimBuilderVaImportPayload(input: {
   combinedRating: number | null
   combinedEffectiveDate?: string
@@ -93,5 +98,36 @@ export async function importVaRatingsToClaimBuilder(
       : [],
     importedAt: typeof body.importedAt === 'string' ? body.importedAt : undefined,
     conditionCount: typeof body.conditionCount === 'number' ? body.conditionCount : payload.conditions.length
+  }
+}
+
+export async function checkClaimBuilderVaImportSync(
+  payload: ClaimBuilderVaImportPayload
+): Promise<ClaimBuilderVaImportSyncStatus> {
+  const token = await readHubAccessToken()
+  if (!token) {
+    return { synced: false, importedAt: null }
+  }
+
+  const base = CLAIMBUILDER_URL.replace(/\/$/, '')
+  const response = await fetch(`${base}/api/extension/va-ratings-import/status`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  })
+
+  if (!response.ok) {
+    return { synced: false, importedAt: null }
+  }
+
+  const body = await response.json().catch(() => ({})) as Record<string, unknown>
+  return {
+    synced: body.synced === true,
+    importedAt: typeof body.importedAt === 'string' ? body.importedAt : null
   }
 }

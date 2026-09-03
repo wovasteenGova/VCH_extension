@@ -3,6 +3,11 @@ import { buildVchComUrlFromLocation } from '@/shared/vchUsToComUrl'
 const BANNER_HOST_ID = 'vch-us-to-com-banner'
 const DISMISS_KEY = 'vch-us-to-com-banner-dismissed'
 
+const HUB_US_HOSTS = new Set([
+  'veteranscentralhub.us',
+  'www.veteranscentralhub.us'
+])
+
 const BANNER_STYLES = `
 :host {
   all: initial;
@@ -73,8 +78,14 @@ export default defineContentScript({
   ],
   runAt: 'document_idle',
   main() {
+    const host = window.location.hostname.toLowerCase()
     const comUrl = buildVchComUrlFromLocation(window.location)
     if (!comUrl) return
+
+    if (HUB_US_HOSTS.has(host)) {
+      window.location.replace(comUrl)
+      return
+    }
 
     try {
       if (sessionStorage.getItem(DISMISS_KEY) === '1') return
@@ -84,9 +95,9 @@ export default defineContentScript({
 
     if (document.getElementById(BANNER_HOST_ID)) return
 
-    const host = document.createElement('div')
-    host.id = BANNER_HOST_ID
-    const shadow = host.attachShadow({ mode: 'open' })
+    const bannerHost = document.createElement('div')
+    bannerHost.id = BANNER_HOST_ID
+    const shadow = bannerHost.attachShadow({ mode: 'open' })
 
     const style = document.createElement('style')
     style.textContent = BANNER_STYLES
@@ -107,7 +118,7 @@ export default defineContentScript({
 
     shell.appendChild(card)
     shadow.append(style, shell)
-    document.documentElement.appendChild(host)
+    document.documentElement.appendChild(bannerHost)
 
     shadow.addEventListener('click', (event) => {
       const target = event.target as HTMLElement | null
@@ -122,7 +133,7 @@ export default defineContentScript({
         } catch {
           /* ignore */
         }
-        host.remove()
+        bannerHost.remove()
       }
     })
   }

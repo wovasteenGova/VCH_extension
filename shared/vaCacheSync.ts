@@ -24,6 +24,17 @@ export type VaLiveCachePersistResult = {
 
 let inflight: Promise<VaLiveCachePersistResult> | null = null
 
+const LIVE_CACHE_TIMEOUT_MS = 20000
+
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error(`${label} timed out`)), LIVE_CACHE_TIMEOUT_MS)
+    })
+  ])
+}
+
 async function persistLiveVaCachesOnce(): Promise<VaLiveCachePersistResult> {
   const result: VaLiveCachePersistResult = {
     claims: 0,
@@ -32,11 +43,14 @@ async function persistLiveVaCachesOnce(): Promise<VaLiveCachePersistResult> {
     profile: false
   }
 
-  const [claimsRes, appealsRes, ratingsRes] = await Promise.all([
-    fetchVaClaimsList(),
-    fetchVaAppeals(),
-    fetchVaRatedDisabilities()
-  ])
+  const [claimsRes, appealsRes, ratingsRes] = await withTimeout(
+    Promise.all([
+      fetchVaClaimsList(),
+      fetchVaAppeals(),
+      fetchVaRatedDisabilities()
+    ]),
+    'VA sync'
+  )
 
   if (claimsRes.ok) {
     const parsed = unwrapVaList(claimsRes.data)
@@ -68,8 +82,12 @@ async function persistLiveVaCachesOnce(): Promise<VaLiveCachePersistResult> {
     }
   }
 
-  const profile = await refreshVaProfileForImport()
-  result.profile = Boolean(profile)
+  try {
+    const profile = await withTimeout(refreshVaProfileForImport(), 'VA profile sync')
+    result.profile = Boolean(profile)
+  } catch {
+    result.profile = false
+  }
 
   return result
 }
@@ -77,7 +95,12 @@ async function persistLiveVaCachesOnce(): Promise<VaLiveCachePersistResult> {
 /** Save every VA dataset that the current session can reach. Never wipes existing cache with empty. */
 export function persistLiveVaCaches(): Promise<VaLiveCachePersistResult> {
   if (inflight) return inflight
-  inflight = persistLiveVaCachesOnce().finally(() => {
+  inflight = persistLiveVaCachesOnce().catch(() => ({
+    claims: 0,
+    appeals: 0,
+    ratings: false,
+    profile: false
+  })).finally(() => {
     inflight = null
   })
   return inflight

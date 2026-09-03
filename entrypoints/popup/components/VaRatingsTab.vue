@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   buildClaimBuilderVaImportPayload,
+  checkClaimBuilderVaImportSync,
   importVaRatingsToClaimBuilder
 } from '@/shared/claimBuilderVaImport'
 import { openHubSignIn, type ConnectionState } from '@/shared/connectionStatus'
@@ -47,6 +48,10 @@ const importConsent = ref(false)
 const importBusy = ref(false)
 const importError = ref<string | null>(null)
 const importSuccess = ref<string | null>(null)
+const importPanelExpanded = ref(false)
+const claimBuilderSyncStatus = ref<'idle' | 'checking' | 'synced' | 'out_of_sync'>('idle')
+const claimBuilderSyncedAt = ref<string | null>(null)
+let claimBuilderSyncCheckToken = 0
 const hubSession = ref<ConnectionState>({ connected: false, label: 'Checking…' })
 const hubCanImport = ref(false)
 const vaSession = ref<ConnectionState>({ connected: false, label: 'Checking…' })
@@ -95,6 +100,50 @@ const importPreviewItems = computed(() => buildVaImportPreviewItems({
   profile: importProfilePreview.value
 }))
 
+const currentImportPayload = computed(() => buildClaimBuilderVaImportPayload({
+  combinedRating: combinedRating.value,
+  combinedEffectiveDate: combinedEffectiveDate.value,
+  rows: rows.value,
+  profile: importProfilePreview.value
+}))
+
+const showCollapsedClaimBuilderSync = computed(() =>
+  claimBuilderSyncStatus.value === 'synced'
+  && !importPanelExpanded.value
+  && hubCanImport.value
+  && hasRatingsData.value
+)
+
+const showClaimBuilderImportPanel = computed(() =>
+  (combinedRating.value != null || rows.value.length)
+  && !showCollapsedClaimBuilderSync.value
+)
+
+async function refreshClaimBuilderSyncStatus() {
+  if (!unlocked.value || !hubCanImport.value || !hasRatingsData.value) {
+    claimBuilderSyncStatus.value = 'idle'
+    claimBuilderSyncedAt.value = null
+    return
+  }
+
+  const token = ++claimBuilderSyncCheckToken
+  claimBuilderSyncStatus.value = 'checking'
+
+  const status = await checkClaimBuilderVaImportSync(currentImportPayload.value)
+  if (token !== claimBuilderSyncCheckToken) return
+
+  claimBuilderSyncStatus.value = status.synced ? 'synced' : 'out_of_sync'
+  claimBuilderSyncedAt.value = status.importedAt
+  if (status.synced) {
+    importPanelExpanded.value = false
+  }
+}
+
+function expandClaimBuilderImportPanel() {
+  importPanelExpanded.value = true
+  importSuccess.value = null
+}
+
 async function refreshImportProfilePreview() {
   const previous = importProfilePreview.value
   const next = await refreshVaProfileForImport()
@@ -103,6 +152,7 @@ async function refreshImportProfilePreview() {
 
 async function refreshRatingsAndProfile() {
   await Promise.all([loadRatings(), refreshImportProfilePreview()])
+  void refreshClaimBuilderSyncStatus()
 }
 
 async function refreshHubSession() {
@@ -115,6 +165,7 @@ async function refreshHubSession() {
   if (session.canImport && importError.value?.toLowerCase().includes('sign in')) {
     importError.value = null
   }
+  void refreshClaimBuilderSyncStatus()
 }
 
 async function refreshRatingsGate() {
@@ -161,6 +212,9 @@ function clearRatingsDisplay() {
   importConsent.value = false
   importError.value = null
   importSuccess.value = null
+  importPanelExpanded.value = false
+  claimBuilderSyncStatus.value = 'idle'
+  claimBuilderSyncedAt.value = null
 }
 
 async function hydrateRatingsFromDevice() {
@@ -257,6 +311,8 @@ async function populateClaimBuilderSettings() {
       appliedProfileFields: result.appliedProfileFields,
       conditionCount: result.conditionCount
     })
+    importPanelExpanded.value = false
+    void refreshClaimBuilderSyncStatus()
     openClaimBuilder(true)
   } catch (caught) {
     importError.value = caught instanceof Error ? caught.message : 'Could not populate ClaimBuilder settings.'
@@ -285,11 +341,20 @@ watch(unlocked, async (isUnlocked) => {
     void refreshHubSession()
     void refreshImportProfilePreview()
     void loadRatings()
+    void refreshClaimBuilderSyncStatus()
   } else {
     clearRatingsDisplay()
     importProfilePreview.value = null
   }
 })
+
+watch(
+  [rows, combinedRating, combinedEffectiveDate, importProfilePreview, hubCanImport],
+  () => {
+    void refreshClaimBuilderSyncStatus()
+  },
+  { deep: true }
+)
 
 onMounted(async () => {
   await Promise.all([init(), refreshHubSession(), refreshRatingsGate()])
@@ -531,7 +596,35 @@ onUnmounted(() => {
         </div>
 
         <div
-          v-if="combinedRating != null || rows.length"
+          v-if="showCollapsedClaimBuilderSync"
+          class="rounded-lg border border-primary/30 bg-primary/10 p-3"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex min-w-0 items-center gap-2">
+              <span class="flex size-8 shrink-0 items-center justify-center rounded-md border border-primary/40 bg-primary/15">
+                <UIcon name="i-lucide-cloud-check" class="size-4 text-primary" />
+              </span>
+              <div class="min-w-0">
+                <p class="font-medium text-xs text-highlighted">
+                  Synced with ClaimBuilder
+                </p>
+                <p v-if="claimBuilderSyncedAt" class="truncate text-[0.65rem] text-muted">
+                  Last populated {{ formatVaDate(claimBuilderSyncedAt) }}
+                </p>
+              </div>
+            </div>
+            <UButton
+              size="xs"
+              color="primary"
+              variant="soft"
+              label="Resync"
+              @click="expandClaimBuilderImportPanel"
+            />
+          </div>
+        </div>
+
+        <div
+          v-else-if="showClaimBuilderImportPanel"
           class="space-y-3 rounded-lg border border-default bg-elevated/30 p-3"
         >
           <div class="space-y-1">

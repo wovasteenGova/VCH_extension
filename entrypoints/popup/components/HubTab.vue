@@ -39,8 +39,9 @@ function openUrl(url: string) {
     </div>
 
     <p class="text-muted text-xs leading-relaxed">
-      More Hub pages — Benefits, Services, Donate, Dashboard — are in
-      <strong class="font-medium text-highlighted">Hub destinations</strong> below the tabs.
+      Footer shortcuts: <strong class="font-medium text-highlighted">Hub destinations</strong>,
+      <strong class="font-medium text-highlighted">Quick Links</strong> (VA.gov),
+      and <strong class="font-medium text-highlighted">More tools</strong> (VCH calculators and guides).
     </p>
 
     <div class="mt-auto border-t border-default pt-3">

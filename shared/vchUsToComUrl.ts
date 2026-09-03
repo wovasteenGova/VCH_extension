@@ -1,5 +1,6 @@
 const VCH_ROOT_US = 'veteranscentralhub.us'
 const VCH_ROOT_COM = 'veteranscentralhub.com'
+const VCH_CANONICAL_HUB_HOST = `www.${VCH_ROOT_COM}`
 
 function normalizeHostname(value: string) {
   return String(value || '').trim().toLowerCase().split(':')[0].split('/')[0]
@@ -12,8 +13,12 @@ function replaceVchRoot(host: string, nextTld: 'com' | 'us') {
   return host
 }
 
+/** Legacy Hub .us only — maps to canonical www .com. */
 export function mapVchHostnameUsToCom(hostname: string) {
   const host = normalizeHostname(hostname)
+  if (host === VCH_ROOT_US || host === `www.${VCH_ROOT_US}`) {
+    return VCH_CANONICAL_HUB_HOST
+  }
   if (host !== VCH_ROOT_US && !host.endsWith(`.${VCH_ROOT_US}`)) {
     return null
   }
