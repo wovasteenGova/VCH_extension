@@ -15,10 +15,10 @@ defineEmits<{
     color="warning"
     variant="soft"
     icon="i-lucide-cloud-off"
-    title="Using saved data from this device"
+    title="Not up to date"
     :description="formatLastSynced(lastSyncedAt)
-      ? `Last synced ${formatLastSynced(lastSyncedAt)}. Sign in at VA.gov to refresh.`
-      : 'Sign in at VA.gov to refresh your VA data.'"
+      ? `Showing data saved on this device (last synced ${formatLastSynced(lastSyncedAt)}). Sign in at VA.gov to refresh.`
+      : 'Showing data saved on this device. Sign in at VA.gov to refresh.'"
   >
     <template #actions>
       <UButton

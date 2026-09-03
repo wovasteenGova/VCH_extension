@@ -62,6 +62,14 @@ export async function fetchVaUser() {
   return vaFetch('https://api.va.gov/v0/user')
 }
 
+export async function fetchVaPersonalInformation() {
+  return vaFetch('https://api.va.gov/v0/profile/personal_information')
+}
+
+export async function fetchVaServiceHistory() {
+  return vaFetch('https://api.va.gov/v0/profile/service_history')
+}
+
 export function unwrapVaData<T = unknown>(payload: unknown): T | null {
   if (!payload || typeof payload !== 'object') return null
   const record = payload as Record<string, unknown>

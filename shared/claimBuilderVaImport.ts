@@ -1,7 +1,8 @@
-import { readHubAccessToken } from './hubAccessToken'
+import { readHubAccessToken } from './hubSessionRead'
 import type { ParsedVaRating } from './vaRatingParse'
 import type { ParsedVaUserProfileForImport } from './vaUserProfileParse'
 import { CLAIMBUILDER_URL } from './urls'
+import { DEFAULT_HUB_ORIGIN } from './hubOrigins'
 
 export type ClaimBuilderVaImportPayload = {
   combinedRating: number | null
@@ -48,12 +49,13 @@ export async function importVaRatingsToClaimBuilder(
 ): Promise<ClaimBuilderVaImportResult> {
   const token = await readHubAccessToken()
   if (!token) {
-    throw new Error('Sign in to Veterans Central Hub first (same browser).')
+    throw new Error('Could not read your Hub sign-in from this browser. Open veteranscentralhub.com, sign in, then try again.')
   }
 
   const base = CLAIMBUILDER_URL.replace(/\/$/, '')
   const response = await fetch(`${base}/api/extension/va-ratings-import`, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -64,6 +66,10 @@ export async function importVaRatingsToClaimBuilder(
 
   const body = await response.json().catch(() => ({})) as Record<string, unknown>
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error(`Hub sign-in expired. Open ${DEFAULT_HUB_ORIGIN.replace('https://', '')} and sign in again.`)
+    }
+
     if (response.status === 404) {
       throw new Error('ClaimBuilder sync is not live on the server yet. Deploy the latest ClaimBuilder build, then try again.')
     }

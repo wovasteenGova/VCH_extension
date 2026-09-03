@@ -1,4 +1,4 @@
-import { DEFAULT_HUB_ORIGIN, getDetectedHubOrigin, hubUrlOnOrigin } from './hubOrigins'
+import { DEFAULT_HUB_ORIGIN, hubUrlOnOrigin } from './hubOrigins'
 
 export const VCH_HUB_URL = import.meta.env.VITE_VCH_HUB_URL || DEFAULT_HUB_ORIGIN
 export const CLAIMBUILDER_URL = import.meta.env.VITE_CLAIMBUILDER_URL || 'https://claimbuilder.veteranscentralhub.com'
@@ -58,7 +58,7 @@ export function hubUrl(path: string) {
   return hubUrlOnOrigin(VCH_HUB_URL, path)
 }
 
-/** Open a Hub path on the signed-in TLD when known (.com or .us). */
+/** Open a Hub path on veteranscentralhub.com. */
 export function hubUrlForActiveSession(path: string) {
-  return hubUrlOnOrigin(getDetectedHubOrigin(), path)
+  return hubUrlOnOrigin(DEFAULT_HUB_ORIGIN, path)
 }

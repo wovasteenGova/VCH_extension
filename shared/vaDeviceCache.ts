@@ -1,6 +1,8 @@
 import type { ParsedVaAppeal } from './vaAppealParse'
 import type { ParsedVaClaim } from './vaClaimParse'
 import type { ParsedVaRating } from './vaRatingParse'
+import type { ParsedVaUserProfileForImport } from './vaUserProfileParse'
+import { mergeVaUserProfileImports } from './vaUserProfileParse'
 
 const CACHE_KEY = 'vch-va-device-cache-v1'
 
@@ -16,6 +18,7 @@ export type VaDeviceCache = {
   claims: ParsedVaClaim[]
   appeals: ParsedVaAppeal[]
   ratings: VaDeviceRatingsCache | null
+  profile: ParsedVaUserProfileForImport | null
 }
 
 const EMPTY_CACHE: VaDeviceCache = {
@@ -23,7 +26,8 @@ const EMPTY_CACHE: VaDeviceCache = {
   vaLabel: null,
   claims: [],
   appeals: [],
-  ratings: null
+  ratings: null,
+  profile: null
 }
 
 function storageGet(): Promise<VaDeviceCache> {
@@ -40,14 +44,17 @@ function storageGet(): Promise<VaDeviceCache> {
       appeals: Array.isArray(record.appeals) ? record.appeals as ParsedVaAppeal[] : [],
       ratings: record.ratings && typeof record.ratings === 'object'
         ? record.ratings as VaDeviceRatingsCache
+        : null,
+      profile: record.profile && typeof record.profile === 'object'
+        ? record.profile as ParsedVaUserProfileForImport
         : null
     }
-  })
+  }).catch(() => ({ ...EMPTY_CACHE }))
 }
 
 function storageSet(cache: VaDeviceCache): Promise<void> {
   if (!browser.storage?.local?.set) return Promise.resolve()
-  return browser.storage.local.set({ [CACHE_KEY]: cache })
+  return browser.storage.local.set({ [CACHE_KEY]: cache }).catch(() => undefined)
 }
 
 export async function readVaDeviceCache(): Promise<VaDeviceCache> {
@@ -62,9 +69,23 @@ export async function readVaCacheMeta() {
     hasClaims: cache.claims.length > 0,
     hasAppeals: cache.appeals.length > 0,
     hasRatings: Boolean(cache.ratings && (cache.ratings.rows.length || cache.ratings.combinedRating != null)),
+    hasProfile: Boolean(cache.profile && (
+      cache.profile.dateOfBirth
+      || cache.profile.phone
+      || cache.profile.fullName
+      || cache.profile.lastFourSsn
+      || cache.profile.servicePeriods?.length
+    )),
     hasAny: cache.claims.length > 0
       || cache.appeals.length > 0
       || Boolean(cache.ratings && (cache.ratings.rows.length || cache.ratings.combinedRating != null))
+      || Boolean(cache.profile && (
+        cache.profile.dateOfBirth
+        || cache.profile.phone
+        || cache.profile.fullName
+        || cache.profile.lastFourSsn
+        || cache.profile.servicePeriods?.length
+      ))
   }
 }
 
@@ -82,6 +103,8 @@ export async function touchVaCacheSync(meta?: { vaLabel?: string | null }) {
 
 export async function saveVaClaimsCache(claims: ParsedVaClaim[]) {
   const current = await storageGet()
+  // Never wipe a good on-device claims cache with an empty live response.
+  if (claims.length === 0 && current.claims.length > 0) return
   await storageSet({
     ...current,
     claims,
@@ -103,6 +126,17 @@ export async function saveVaRatingsCache(ratings: VaDeviceRatingsCache) {
   await storageSet({
     ...current,
     ratings,
+    lastSyncedAt: new Date().toISOString()
+  })
+}
+
+export async function saveVaProfileCache(profile: ParsedVaUserProfileForImport) {
+  const current = await storageGet()
+  const merged = mergeVaUserProfileImports(current.profile, profile)
+  if (!merged) return
+  await storageSet({
+    ...current,
+    profile: merged,
     lastSyncedAt: new Date().toISOString()
   })
 }

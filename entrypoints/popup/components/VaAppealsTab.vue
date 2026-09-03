@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VA_SIGN_IN_PAGE } from '@/shared/vaEndpoints'
+import { openVaSignIn } from '@/shared/vaSignInNavigation'
 import { fetchVaAppeals, formatVaDate } from '@/shared/vaClient'
 import { parseVaAppealsList, type ParsedVaAppeal } from '@/shared/vaAppealParse'
 import { readVaDeviceCache, saveVaAppealsCache } from '@/shared/vaDeviceCache'
@@ -30,7 +30,7 @@ async function loadAppeals() {
 
   if (!response.ok) {
     const restored = await hydrateAppealsFromDevice()
-    if (restored) {
+    if (restored || rows.value.length > 0) {
       isStale.value = true
       error.value = null
       return
@@ -48,13 +48,17 @@ async function loadAppeals() {
   lastSyncedAt.value = cache.lastSyncedAt
 }
 
-function openVaSignIn() {
-  void browser.tabs.create({ url: VA_SIGN_IN_PAGE })
+async function bootstrapAppeals() {
+  const restored = await hydrateAppealsFromDevice()
+  if (restored) {
+    isStale.value = true
+    error.value = null
+  }
+  await loadAppeals()
 }
 
-onMounted(async () => {
-  await hydrateAppealsFromDevice()
-  void loadAppeals()
+onMounted(() => {
+  void bootstrapAppeals()
 })
 </script>
 
@@ -87,7 +91,7 @@ onMounted(async () => {
     />
 
     <UAlert
-      v-if="error && !rows.length"
+      v-if="error && !rows.length && !isStale"
       color="warning"
       variant="soft"
       icon="i-lucide-triangle-alert"

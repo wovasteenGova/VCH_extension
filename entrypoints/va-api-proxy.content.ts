@@ -1,3 +1,5 @@
+import { isExtensionContextValid } from '@/shared/extensionContext'
+
 const VA_FETCH_HEADERS: Record<string, string> = {
   Accept: 'application/json',
   'X-Key-Inflection': 'camel'
@@ -7,7 +9,17 @@ export default defineContentScript({
   matches: ['https://www.va.gov/*', 'https://va.gov/*'],
   runAt: 'document_idle',
   main() {
+    if (!isExtensionContextValid()) return
+
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (!isExtensionContextValid()) {
+        sendResponse({
+          ok: false,
+          status: 0,
+          error: 'Extension context invalidated — refresh this VA.gov tab.'
+        })
+        return
+      }
       if (message?.type !== 'VA_API_FETCH' || typeof message.url !== 'string') {
         return
       }

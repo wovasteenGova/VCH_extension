@@ -1,4 +1,13 @@
 const STORAGE_CREDENTIAL_ID = 'vch_ratings_lock_credential_id'
+const STORAGE_CREDENTIAL_TRANSPORTS = 'vch_ratings_lock_credential_transports'
+
+const DEFAULT_PASSKEY_TRANSPORTS: AuthenticatorTransport[] = [
+  'internal',
+  'hybrid',
+  'usb',
+  'nfc',
+  'ble'
+]
 
 export type RatingsLockStatus = {
   hasCredential: boolean
@@ -37,16 +46,35 @@ function passkeyErrorMessage(error: unknown, fallback: string) {
       return 'Passkey prompt was closed or timed out. Try again when ready.'
     }
     if (error.name === 'SecurityError') {
-      return 'This browser blocked the passkey request. Try Edge or Chrome on this device.'
+      return 'This browser blocked the passkey request. Try Edge or Chrome, or choose a different passkey option.'
     }
     if (error.name === 'InvalidStateError') {
-      return 'A ratings passkey is already set up on this device.'
+      return 'A ratings passkey is already set up for this extension.'
     }
     if (error.message) return error.message
   }
 
   if (error instanceof Error && error.message) return error.message
   return fallback
+}
+
+function readCredentialTransports(value: unknown): AuthenticatorTransport[] {
+  if (!Array.isArray(value)) return DEFAULT_PASSKEY_TRANSPORTS
+  const allowed = new Set<AuthenticatorTransport>(DEFAULT_PASSKEY_TRANSPORTS)
+  const transports = value.filter(
+    (entry): entry is AuthenticatorTransport =>
+      typeof entry === 'string' && allowed.has(entry as AuthenticatorTransport)
+  )
+  return transports.length ? transports : DEFAULT_PASSKEY_TRANSPORTS
+}
+
+function credentialTransports(credential: PublicKeyCredential) {
+  const response = credential.response as AuthenticatorAttestationResponse
+  if (typeof response.getTransports === 'function') {
+    const transports = response.getTransports()
+    if (transports.length) return transports
+  }
+  return DEFAULT_PASSKEY_TRANSPORTS
 }
 
 export function isRatingsPasskeySupported() {
@@ -92,15 +120,15 @@ export async function registerRatingsPasskeyLock() {
           { alg: -257, type: 'public-key' }
         ],
         authenticatorSelection: {
-          authenticatorAttachment: 'platform',
           residentKey: 'preferred',
           userVerification: 'required'
         },
+        attestation: 'none',
         timeout: 60_000
       }
     }) as PublicKeyCredential | null
   } catch (error) {
-    throw new Error(passkeyErrorMessage(error, 'Could not create a device passkey.'))
+    throw new Error(passkeyErrorMessage(error, 'Could not create a passkey.'))
   }
 
   if (!credential) {
@@ -108,7 +136,8 @@ export async function registerRatingsPasskeyLock() {
   }
 
   await browser.storage.local.set({
-    [STORAGE_CREDENTIAL_ID]: bufferToBase64url(credential.rawId)
+    [STORAGE_CREDENTIAL_ID]: bufferToBase64url(credential.rawId),
+    [STORAGE_CREDENTIAL_TRANSPORTS]: credentialTransports(credential)
   })
 }
 
@@ -117,12 +146,16 @@ export async function unlockRatingsWithPasskey() {
     throw new Error('Passkeys are not supported in this browser.')
   }
 
-  const stored = await browser.storage.local.get(STORAGE_CREDENTIAL_ID)
+  const stored = await browser.storage.local.get([
+    STORAGE_CREDENTIAL_ID,
+    STORAGE_CREDENTIAL_TRANSPORTS
+  ])
   const credentialId = stored[STORAGE_CREDENTIAL_ID]
   if (typeof credentialId !== 'string' || !credentialId) {
-    throw new Error('Set up a device passkey before viewing ratings.')
+    throw new Error('Set up a passkey before viewing ratings.')
   }
 
+  const transports = readCredentialTransports(stored[STORAGE_CREDENTIAL_TRANSPORTS])
   const challenge = crypto.getRandomValues(new Uint8Array(32))
   const rpId = extensionRpId()
 
@@ -134,7 +167,7 @@ export async function unlockRatingsWithPasskey() {
         allowCredentials: [{
           id: base64urlToBuffer(credentialId),
           type: 'public-key',
-          transports: ['internal', 'hybrid']
+          transports
         }],
         userVerification: 'required',
         timeout: 60_000
@@ -147,7 +180,9 @@ export async function unlockRatingsWithPasskey() {
   }
 }
 
-export async function removeRatingsPasskeyLock() {
-  await unlockRatingsWithPasskey()
-  await browser.storage.local.remove(STORAGE_CREDENTIAL_ID)
+export async function clearRatingsPasskeyLockCredential() {
+  await browser.storage.local.remove([
+    STORAGE_CREDENTIAL_ID,
+    STORAGE_CREDENTIAL_TRANSPORTS
+  ])
 }

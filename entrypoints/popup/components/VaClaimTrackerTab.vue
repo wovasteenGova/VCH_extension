@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VA_CLAIMS_PAGE, VA_SIGN_IN_PAGE } from '@/shared/vaEndpoints'
+import { openVaClaimsPage } from '@/shared/vaSignInNavigation'
 import {
   fetchVaClaimDetail,
   fetchVaClaimsList,
@@ -12,41 +12,106 @@ import {
   parseVaClaim,
   type ParsedVaClaim
 } from '@/shared/vaClaimParse'
-import { readVaDeviceCache, saveVaClaimsCache } from '@/shared/vaDeviceCache'
+import { readVaDeviceCache, readVaCacheMeta, saveVaClaimsCache } from '@/shared/vaDeviceCache'
+import { hasOpenVaGovTab } from '@/shared/vaGovTabFetch'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
 
 const loading = ref(false)
 const error = ref<string | null>(null)
 const isStale = ref(false)
 const lastSyncedAt = ref<string | null>(null)
+const hasClaimsCache = ref(false)
+const hasOtherVaCache = ref(false)
+const vaGovTabOpen = ref(false)
 const claims = ref<ParsedVaClaim[]>([])
 const expandedId = ref<string | null>(null)
 const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
 const loadedDetailIds = ref<Set<string>>(new Set())
 
+async function refreshDeviceCacheMeta() {
+  const meta = await readVaCacheMeta()
+  hasClaimsCache.value = meta.hasClaims
+  hasOtherVaCache.value = meta.hasAny && !meta.hasClaims
+  lastSyncedAt.value = meta.lastSyncedAt
+  vaGovTabOpen.value = await hasOpenVaGovTab()
+}
+
 async function hydrateClaimsFromDevice() {
   const cache = await readVaDeviceCache()
   lastSyncedAt.value = cache.lastSyncedAt
+  hasClaimsCache.value = cache.claims.length > 0
   if (!cache.claims.length) return false
   claims.value = cache.claims
   return true
 }
 
-async function loadClaims() {
-  loading.value = true
+const showSignInWall = computed(() =>
+  Boolean(
+    error.value
+    && !claims.value.length
+    && !isStale.value
+    && !hasClaimsCache.value
+    && !hasOtherVaCache.value
+  )
+)
+
+const showClaimsNotSyncedInfo = computed(() =>
+  !claims.value.length && !isStale.value && !hasClaimsCache.value && hasOtherVaCache.value
+)
+
+const claimsErrorDescription = computed(() => {
+  if (!vaGovTabOpen.value) {
+    return 'No claims saved on this device yet. Open Track claims on VA.gov in this browser, sign in, let your list load, then refresh here or use the VCH bar at the bottom of that page.'
+  }
+
+  return 'VA.gov is open, but claims are not authorized yet. Open Track claims, wait for your list to load, then refresh here or tap Sync on the VCH bar at the bottom of that page.'
+})
+
+const claimsNotSyncedDescription = computed(() =>
+  'Ratings or appeals are saved on this device, but claims have not synced yet. Open Track claims on VA.gov in this browser, wait for your list to load, then refresh here or use the VCH bar at the bottom of that page.'
+)
+
+async function restoreClaimsFromDevice() {
+  const restored = await hydrateClaimsFromDevice()
+  await refreshDeviceCacheMeta()
+  if (restored || claims.value.length > 0) {
+    isStale.value = true
+    error.value = null
+  }
+  return restored || claims.value.length > 0
+}
+
+function applyCachedClaims(fallbackClaims: ParsedVaClaim[]) {
+  if (!fallbackClaims.length) return false
+  claims.value = fallbackClaims
+  isStale.value = true
   error.value = null
-  expandedId.value = null
-  loadedDetailIds.value = new Set()
+  return true
+}
+
+async function loadClaims() {
+  const cacheBefore = await readVaDeviceCache()
+  const cachedClaims = cacheBefore.claims.length
+    ? cacheBefore.claims
+    : (claims.value.length ? [...claims.value] : [])
+
+  loading.value = true
+  // Keep cached rows visible while refreshing; only clear errors when we have cache.
+  if (cachedClaims.length) {
+    applyCachedClaims(cachedClaims)
+  } else {
+    error.value = null
+    expandedId.value = null
+    loadedDetailIds.value = new Set()
+  }
 
   const response = await fetchVaClaimsList()
   loading.value = false
 
   if (!response.ok) {
-    const restored = await hydrateClaimsFromDevice()
-    if (restored) {
-      isStale.value = true
-      error.value = null
+    await refreshDeviceCacheMeta()
+    if (applyCachedClaims(cachedClaims) || (await hydrateClaimsFromDevice())) {
       return
     }
     isStale.value = false
@@ -56,14 +121,40 @@ async function loadClaims() {
   }
 
   const list = unwrapVaData<unknown[]>(response.data) || []
-  claims.value = list
+  const parsed = list
     .map(item => parseVaClaim(item))
     .filter(Boolean) as ParsedVaClaim[]
 
+  if (parsed.length === 0) {
+    await refreshDeviceCacheMeta()
+    if (applyCachedClaims(cachedClaims) || (await hydrateClaimsFromDevice())) {
+      return
+    }
+    claims.value = []
+    isStale.value = false
+    error.value = null
+    return
+  }
+
+  claims.value = parsed
   isStale.value = false
+  error.value = null
   await saveVaClaimsCache(claims.value)
-  const cache = await readVaDeviceCache()
-  lastSyncedAt.value = cache.lastSyncedAt
+  await refreshDeviceCacheMeta()
+}
+
+async function bootstrapClaims() {
+  await refreshDeviceCacheMeta()
+  const restored = await hydrateClaimsFromDevice()
+  if (restored) {
+    isStale.value = true
+    error.value = null
+  }
+  await loadClaims()
+  if (hasClaimsCache.value && !claims.value.length) {
+    await restoreClaimsFromDevice()
+  }
+  await refreshDeviceCacheMeta()
 }
 
 function claimById(id: string) {
@@ -100,16 +191,15 @@ async function toggleDetail(claimId: string) {
 }
 
 function openVaSignIn() {
-  void browser.tabs.create({ url: VA_SIGN_IN_PAGE })
+  openVaClaimsPage()
 }
 
 function openVaClaims() {
-  void browser.tabs.create({ url: VA_CLAIMS_PAGE })
+  openVaClaimsPage()
 }
 
-onMounted(async () => {
-  await hydrateClaimsFromDevice()
-  void loadClaims()
+onMounted(() => {
+  void bootstrapClaims()
 })
 </script>
 
@@ -119,15 +209,26 @@ onMounted(async () => {
       <p class="font-medium text-sm text-highlighted">
         Your VA claims
       </p>
-      <UButton
-        size="xs"
-        color="neutral"
-        variant="ghost"
-        icon="i-lucide-refresh-cw"
-        :loading="loading"
-        aria-label="Refresh claims"
-        @click="loadClaims"
-      />
+      <div class="flex items-center gap-0.5">
+        <UButton
+          v-if="hasClaimsCache && !claims.length"
+          size="xs"
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-hard-drive-download"
+          aria-label="Restore saved claims"
+          @click="restoreClaimsFromDevice"
+        />
+        <UButton
+          size="xs"
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-refresh-cw"
+          :loading="loading"
+          aria-label="Refresh claims"
+          @click="loadClaims"
+        />
+      </div>
     </div>
 
     <VaStaleSyncBanner
@@ -137,12 +238,25 @@ onMounted(async () => {
     />
 
     <UAlert
-      v-if="error && !claims.length"
+      v-if="showClaimsNotSyncedInfo"
+      color="neutral"
+      variant="soft"
+      icon="i-lucide-info"
+      title="Claims not synced yet"
+      :description="claimsNotSyncedDescription"
+    >
+      <template #actions>
+        <UButton size="xs" color="primary" variant="soft" label="Open claims page" @click="openVaClaims" />
+      </template>
+    </UAlert>
+
+    <UAlert
+      v-else-if="showSignInWall"
       color="warning"
       variant="soft"
       icon="i-lucide-triangle-alert"
-      :title="error"
-      description="Open your VA claims list in this browser first, then refresh here. Ratings and Appeals may work before that. Data stays in your browser — VCH does not store your VA password."
+      :title="error || 'Could not load claims'"
+      :description="claimsErrorDescription"
     >
       <template #actions>
         <UButton size="xs" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />

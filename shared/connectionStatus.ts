@@ -1,12 +1,6 @@
-import { VA_SIGN_IN_PAGE } from './vaEndpoints'
-import { probeHubSessionFromCookies } from './hubCookieAuth'
-import {
-  getDetectedHubOrigin,
-  hubUrlOnOrigin,
-  setDetectedHubOrigin,
-  VCH_HUB_ORIGINS
-} from './hubOrigins'
-import { hubUrl } from './urls'
+import { openVaSignIn as openVaSignInNavigation } from './vaSignInNavigation'
+import { DEFAULT_HUB_ORIGIN, getDetectedHubOrigin, hubUrlOnOrigin, setDetectedHubOrigin } from './hubOrigins'
+import { readHubSession } from './hubSessionRead'
 import {
   fetchVaAppeals,
   fetchVaClaimsList,
@@ -20,7 +14,7 @@ export type ConnectionState = {
 }
 
 export function openHubHome() {
-  void browser.tabs.create({ url: getDetectedHubOrigin() })
+  void browser.tabs.create({ url: getDetectedHubOrigin() || DEFAULT_HUB_ORIGIN })
 }
 
 function readVaProfileName(payload: unknown): string | null {
@@ -77,91 +71,19 @@ export async function probeVaSession(): Promise<ConnectionState> {
   }
 }
 
-type HubSessionPayload = {
-  connected?: boolean
-  displayName?: string
-  email?: string
-}
-
-async function probeHubSessionOnOrigin(origin: string): Promise<ConnectionState | null> {
-  const sessionUrl = hubUrlOnOrigin(origin, '/api/extension/session')
-
-  try {
-    const response = await fetch(sessionUrl, {
-      method: 'GET',
-      credentials: 'include',
-      headers: { Accept: 'application/json' }
-    })
-
-    if (response.status === 404) return null
-
-    const payload = await response.json().catch(() => ({})) as HubSessionPayload
-    if (response.ok && payload.connected) {
-      return {
-        connected: true,
-        label: payload.displayName || payload.email || 'Signed in'
-      }
-    }
-  } catch {
-    /* try next origin */
-  }
-
-  return null
-}
-
 export async function probeHubSession(): Promise<ConnectionState> {
-  const fromCookies = await probeHubSessionFromCookies()
-  if (fromCookies) {
-    if (fromCookies.hubOrigin) {
-      setDetectedHubOrigin(fromCookies.hubOrigin)
-    }
-    return fromCookies
-  }
-
-  for (const origin of VCH_HUB_ORIGINS) {
-    const fromApi = await probeHubSessionOnOrigin(origin)
-    if (fromApi?.connected) {
-      setDetectedHubOrigin(origin)
-      return fromApi
-    }
-  }
-
-  const sessionUrl = hubUrl('/api/extension/session')
-  try {
-    const response = await fetch(sessionUrl, {
-      method: 'GET',
-      credentials: 'include',
-      headers: { Accept: 'application/json' }
-    })
-
-    if (response.status === 404) {
-      return {
-        connected: false,
-        label: 'Hub sign-in (update Hub)'
-      }
-    }
-
-    const payload = await response.json().catch(() => ({})) as HubSessionPayload
-    if (response.ok && payload.connected) {
-      return {
-        connected: true,
-        label: payload.displayName || payload.email || 'Signed in'
-      }
-    }
-  } catch {
-    /* fall through */
-  }
-
+  const session = await readHubSession()
+  setDetectedHubOrigin(session.hubOrigin)
   return {
-    connected: false,
-    label: 'Sign in to Hub'
+    connected: session.connected,
+    label: session.label
   }
 }
 
 export function openVaSignIn() {
-  void browser.tabs.create({ url: VA_SIGN_IN_PAGE })
+  openVaSignInNavigation()
 }
 
 export function openHubSignIn() {
-  void browser.tabs.create({ url: hubUrlOnOrigin(getDetectedHubOrigin(), '/?signin=1') })
+  void browser.tabs.create({ url: hubUrlOnOrigin(DEFAULT_HUB_ORIGIN, '/?signin=1') })
 }

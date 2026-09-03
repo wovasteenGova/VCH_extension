@@ -1,8 +1,8 @@
 import {
+  clearRatingsPasskeyLockCredential,
   getRatingsLockStatus,
   isRatingsPasskeySupported,
   registerRatingsPasskeyLock,
-  removeRatingsPasskeyLock,
   unlockRatingsWithPasskey
 } from '@/shared/ratingsPasskeyLock'
 
@@ -48,9 +48,10 @@ export function useRatingsPasskeyLock() {
     lockError.value = null
 
     try {
-      const ok = await unlockRatingsWithPasskey()
-      unlocked.value = ok
-      if (!ok) lockError.value = 'Passkey verification failed.'
+      unlocked.value = await unlockRatingsWithPasskey()
+      if (!unlocked.value) {
+        lockError.value = 'Passkey verification failed.'
+      }
     } catch (error) {
       lockError.value = error instanceof Error ? error.message : 'Could not verify passkey.'
       unlocked.value = false
@@ -64,7 +65,11 @@ export function useRatingsPasskeyLock() {
     lockError.value = null
 
     try {
-      await removeRatingsPasskeyLock()
+      const ok = await unlockRatingsWithPasskey()
+      if (!ok) {
+        throw new Error('Could not verify passkey.')
+      }
+      await clearRatingsPasskeyLockCredential()
       hasCredential.value = false
       unlocked.value = false
     } catch (error) {

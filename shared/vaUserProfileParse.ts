@@ -1,7 +1,16 @@
+export type ParsedVaServicePeriodImport = {
+  branch: string | null
+  rank: string | null
+  startYear: number | null
+  endYear: number | null
+}
+
 export type ParsedVaUserProfileForImport = {
   dateOfBirth?: string
   phone?: string
   fullName?: string
+  lastFourSsn?: string
+  servicePeriods?: ParsedVaServicePeriodImport[]
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -30,6 +39,26 @@ function normalizeIsoBirthDate(raw: unknown): string | undefined {
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+/** Never store or transmit a full SSN — last four digits only. */
+export function extractLastFourSsn(raw: unknown): string | undefined {
+  if (raw == null) return undefined
+  const digits = String(raw).replace(/\D/g, '')
+  if (digits.length === 4) return digits
+  if (digits.length === 9) return digits.slice(-4)
+  return undefined
+}
+
+function readSsnFromRecords(...records: Array<Record<string, unknown> | null | undefined>) {
+  for (const record of records) {
+    if (!record) continue
+    for (const key of ['ssn', 'social_security_number', 'socialSecurityNumber', 'last_four_ssn', 'lastFourSsn'] as const) {
+      const lastFour = extractLastFourSsn(record[key])
+      if (lastFour) return lastFour
+    }
+  }
+  return undefined
 }
 
 function formatUsPhone(areaCode: unknown, phoneNumber: unknown): string | undefined {
@@ -66,6 +95,33 @@ function readAttributes(payload: unknown): Record<string, unknown> | null {
   return readRecord(data.attributes) || data
 }
 
+function profileHasData(profile: ParsedVaUserProfileForImport) {
+  return Boolean(
+    profile.dateOfBirth
+    || profile.phone
+    || profile.fullName
+    || profile.lastFourSsn
+    || profile.servicePeriods?.length
+  )
+}
+
+export function mergeVaUserProfileImports(
+  ...parts: Array<ParsedVaUserProfileForImport | null | undefined>
+): ParsedVaUserProfileForImport | null {
+  const merged: ParsedVaUserProfileForImport = {}
+
+  for (const part of parts) {
+    if (!part) continue
+    if (part.dateOfBirth) merged.dateOfBirth = part.dateOfBirth
+    if (part.phone) merged.phone = part.phone
+    if (part.fullName) merged.fullName = part.fullName
+    if (part.lastFourSsn) merged.lastFourSsn = part.lastFourSsn
+    if (part.servicePeriods?.length) merged.servicePeriods = part.servicePeriods
+  }
+
+  return profileHasData(merged) ? merged : null
+}
+
 /** Fields ClaimBuilder Project settings can use, from `GET /v0/user`. */
 export function parseVaUserProfileForClaimBuilder(payload: unknown): ParsedVaUserProfileForImport | null {
   const attrs = readAttributes(payload)
@@ -76,19 +132,49 @@ export function parseVaUserProfileForClaimBuilder(payload: unknown): ParsedVaUse
   const vet360 = readRecord(attrs.vet360_contact_information)
 
   const dateOfBirth = normalizeIsoBirthDate(profile?.birth_date)
+    ?? normalizeIsoBirthDate(profile?.birthDate)
     ?? normalizeIsoBirthDate(vaProfile?.birth_date)
+    ?? normalizeIsoBirthDate(vaProfile?.birthDate)
+    ?? normalizeIsoBirthDate(attrs.birth_date)
+    ?? normalizeIsoBirthDate(attrs.birthDate)
 
   const phone = vet360 ? readPhoneFromVet360(vet360) : undefined
 
-  const first = readString(profile?.first_name) || readString(profile?.givenName)
-  const last = readString(profile?.last_name) || readString(profile?.familyName)
+  const first = readString(profile?.first_name)
+    || readString(profile?.givenName)
+    || readString(attrs.firstName)
+    || readString(attrs.givenName)
+  const last = readString(profile?.last_name)
+    || readString(profile?.familyName)
+    || readString(attrs.lastName)
+    || readString(attrs.familyName)
   const fullName = [first, last].filter(Boolean).join(' ') || undefined
 
-  if (!dateOfBirth && !phone && !fullName) return null
+  const lastFourSsn = readSsnFromRecords(attrs, profile, vaProfile)
 
-  return {
+  const result: ParsedVaUserProfileForImport = {
     ...(dateOfBirth ? { dateOfBirth } : {}),
     ...(phone ? { phone } : {}),
-    ...(fullName ? { fullName } : {})
+    ...(fullName ? { fullName } : {}),
+    ...(lastFourSsn ? { lastFourSsn } : {})
   }
+
+  return profileHasData(result) ? result : null
+}
+
+/** `GET /v0/profile/personal_information` — DOB and SSN when not on `/v0/user`. */
+export function parseVaPersonalInformationForImport(payload: unknown): ParsedVaUserProfileForImport | null {
+  const attrs = readAttributes(payload)
+  if (!attrs) return null
+
+  const dateOfBirth = normalizeIsoBirthDate(attrs.birth_date)
+    ?? normalizeIsoBirthDate(attrs.birthDate)
+  const lastFourSsn = readSsnFromRecords(attrs)
+
+  const result: ParsedVaUserProfileForImport = {
+    ...(dateOfBirth ? { dateOfBirth } : {}),
+    ...(lastFourSsn ? { lastFourSsn } : {})
+  }
+
+  return profileHasData(result) ? result : null
 }
