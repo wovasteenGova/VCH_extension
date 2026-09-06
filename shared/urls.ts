@@ -15,7 +15,7 @@ export type HubQuickLink = {
   external?: boolean
 }
 
-/** In-app Hub routes — opens on veteranscentralhub.com */
+/** In-app Hub routes: opens on veteranscentralhub.com */
 export const HUB_QUICK_LINKS: HubQuickLink[] = [
   {
     id: 'home',

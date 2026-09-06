@@ -74,7 +74,7 @@ const gateMessage = computed(() => {
 
 const emptyUnlockedMessage = computed(() => {
   if (!vaSession.value.connected && !hasCachedRatings.value) {
-    return 'You unlocked ratings, but VA.gov is not signed in on this browser and nothing is saved on this device yet.'
+    return 'Passkey verified, but VA.gov is not signed in on this browser and nothing is saved on this device yet.'
   }
   if (error.value) return error.value
   return 'No disability ratings loaded. Open your disability rating on VA.gov, then refresh here.'
@@ -495,8 +495,8 @@ onUnmounted(() => {
           </p>
           <p class="text-muted text-xs leading-relaxed">
             {{ hasCredential
-              ? 'Unlock with Windows Hello, a device passkey, or your browser saved passkey.'
-              : 'Set up a passkey to hide ratings until you unlock them. Windows Hello, this device, or your browser saved passkey all work in Chrome and Edge.' }}
+              ? 'Open with Windows Hello, a device passkey, or your browser saved passkey.'
+              : 'Set up a passkey to hide ratings until you open them. Windows Hello, this device, or your browser saved passkey all work in Chrome and Edge.' }}
           </p>
         </div>
       </div>
@@ -514,7 +514,7 @@ onUnmounted(() => {
         color="primary"
         leading-icon="i-lucide-fingerprint"
         :loading="lockBusy"
-        :label="hasCredential ? 'Unlock with passkey' : 'Set up passkey'"
+        :label="hasCredential ? 'Open with passkey' : 'Set up passkey'"
         @click="hasCredential ? handleUnlock() : handleSetupLock()"
       />
 
@@ -684,7 +684,7 @@ onUnmounted(() => {
                   class="text-[0.65rem] leading-snug text-muted"
                 >
                   <span class="font-medium text-highlighted">{{ item.label }}</span>
-                  <span v-if="item.detail"> — {{ item.detail }}</span>
+                  <span v-if="item.detail">: {{ item.detail }}</span>
                 </li>
               </ul>
               <p class="text-[0.6rem] leading-relaxed text-muted">
@@ -784,7 +784,7 @@ onUnmounted(() => {
                 {{ row.name }}
               </p>
               <span class="shrink-0 font-semibold text-primary">
-                {{ row.rating != null ? `${row.rating}%` : '—' }}
+                {{ row.rating != null ? `${row.rating}%` : 'N/A' }}
               </span>
             </div>
             <p class="mt-1 text-muted text-xs">

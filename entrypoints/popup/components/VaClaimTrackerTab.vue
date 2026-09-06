@@ -337,7 +337,7 @@ function openVaClaims() {
           <span class="min-w-0 flex-1">
             <span class="block font-medium text-sm text-highlighted">{{ claim.title }}</span>
             <span class="block text-muted text-xs">{{ claim.statusLabel }}</span>
-            <span v-if="claim.phaseLabel && claim.phaseLabel !== '—'" class="block text-muted text-xs">
+            <span v-if="claim.phaseLabel && claim.phaseLabel !== 'N/A'" class="block text-muted text-xs">
               Phase: {{ claim.phaseLabel }}
             </span>
             <span v-if="claim.claimDate" class="block text-muted text-xs">
@@ -376,7 +376,7 @@ function openVaClaims() {
                   {{ claim.statusLabel }}
                 </dd>
               </div>
-              <div v-if="claim.phaseLabel !== '—'" class="grid grid-cols-[6.5rem_1fr] gap-2">
+              <div v-if="claim.phaseLabel !== 'N/A'" class="grid grid-cols-[6.5rem_1fr] gap-2">
                 <dt class="font-medium text-muted">
                   Current phase
                 </dt>

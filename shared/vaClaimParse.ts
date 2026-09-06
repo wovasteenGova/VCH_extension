@@ -76,7 +76,7 @@ const PREVIOUS_PHASE_LABELS: Record<string, string> = {
 }
 
 export function formatVaEnumLabel(value: unknown, map: Record<string, string> = STATUS_LABELS) {
-  if (typeof value !== 'string' || !value) return '—'
+  if (typeof value !== 'string' || !value) return 'N/A'
   if (map[value]) return map[value]
   return value
     .split('_')
@@ -171,7 +171,7 @@ export function formatVaDateRange(min?: string, max?: string) {
   if (min && max) return `${formatVaDateShort(min)} – ${formatVaDateShort(max)}`
   if (min) return `From ${formatVaDateShort(min)}`
   if (max) return `Until ${formatVaDateShort(max)}`
-  return '—'
+  return 'N/A'
 }
 
 export function formatVaDateShort(value: string) {
@@ -202,8 +202,8 @@ export function parseVaClaim(raw: unknown, fallbackId?: string): ParsedVaClaim |
   return {
     id,
     title,
-    claimType: typeof attrs.claimType === 'string' ? attrs.claimType : '—',
-    claimTypeCode: typeof attrs.claimTypeCode === 'string' ? attrs.claimTypeCode : '—',
+    claimType: typeof attrs.claimType === 'string' ? attrs.claimType : 'N/A',
+    claimTypeCode: typeof attrs.claimTypeCode === 'string' ? attrs.claimTypeCode : 'N/A',
     status,
     statusLabel: formatVaEnumLabel(status),
     phase: latestPhase,

@@ -41,7 +41,7 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-/** Never store or transmit a full SSN — last four digits only. */
+/** Never store or transmit a full SSN: last four digits only. */
 export function extractLastFourSsn(raw: unknown): string | undefined {
   if (raw == null) return undefined
   const digits = String(raw).replace(/\D/g, '')
@@ -162,7 +162,7 @@ export function parseVaUserProfileForClaimBuilder(payload: unknown): ParsedVaUse
   return profileHasData(result) ? result : null
 }
 
-/** `GET /v0/profile/personal_information` — DOB and SSN when not on `/v0/user`. */
+/** `GET /v0/profile/personal_information`: DOB and SSN when not on `/v0/user`. */
 export function parseVaPersonalInformationForImport(payload: unknown): ParsedVaUserProfileForImport | null {
   const attrs = readAttributes(payload)
   if (!attrs) return null

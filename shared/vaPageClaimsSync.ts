@@ -34,7 +34,7 @@ async function fetchVaApiOnPage(url: string) {
     return parseVaResponse(response.status, text)
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return { ok: false, status: 0, error: 'VA API timed out — tap Sync to try again.' }
+      return { ok: false, status: 0, error: 'VA API timed out: tap Sync to try again.' }
     }
 
     return {
@@ -47,7 +47,7 @@ async function fetchVaApiOnPage(url: string) {
   }
 }
 
-/** Fast claims sync for the VA.gov track-claims bar — in-page fetch only, no ratings/profile. */
+/** Fast claims sync for the VA.gov track-claims bar: in-page fetch only, no ratings/profile. */
 export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
   const [claimsRes, appealsRes] = await Promise.all([
     fetchVaApiOnPage('https://api.va.gov/v0/benefits_claims'),

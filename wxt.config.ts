@@ -7,7 +7,7 @@ export default defineConfig({
   modules: ['@wxt-dev/module-vue'],
   manifest: {
     name: 'VCH Web Extension',
-    description: 'VCH Web Extension — VA.gov tools, Hub, and ClaimBuilder shortcuts from your browser.',
+    description: 'VCH Web Extension: VA.gov tools, Hub, and ClaimBuilder shortcuts from your browser.',
     permissions: ['storage', 'cookies', 'scripting'],
     host_permissions: [
       'https://api.va.gov/*',

@@ -1,0 +1,25 @@
+---
+description: User-facing copy — no em dashes, plain tone, avoid AI buzzwords
+alwaysApply: true
+---
+
+# VCH Extension copy style
+
+Applies to popup UI, VA.gov content-script messages, manifest description, and import consent copy.
+
+## No em dashes
+
+Do not use `—` or `–` as punctuation in user-facing copy.
+
+Prefer periods, commas, colons, or parentheses. Use `-` or `N/A` for empty table cells, not an em dash.
+
+## Avoid AI buzzword tone
+
+Do not use hype words unless technically required: unlock (prefer "open", "view", "enable"), leverage, seamlessly, streamline, etc.
+
+Prefer plain verbs: organize, use, help, may, sometimes, can, often.
+
+## OK to keep
+
+- Code comments and internal developer strings
+- Function names like `unlock()` in passkey lock code (not shown verbatim to users)

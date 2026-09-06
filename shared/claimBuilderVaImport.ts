@@ -28,7 +28,7 @@ export type ClaimBuilderVaImportResult = {
 export type ClaimBuilderVaImportSyncStatus = {
   synced: boolean
   importedAt: string | null
-  /** False when the server could not be reached — do not treat as out of sync. */
+  /** False when the server could not be reached: do not treat as out of sync. */
   checked: boolean
 }
 

@@ -45,7 +45,7 @@ function readVaProfileName(payload: unknown): string | null {
 }
 
 export async function probeVaSession(): Promise<ConnectionState> {
-  // benefits_claims is the strictest — often needs track-claims open on VA.gov first.
+  // benefits_claims is the strictest: often needs track-claims open on VA.gov first.
   // Probe lighter endpoints first so the chip is not a false negative.
   const probes = [
     fetchVaAppeals,

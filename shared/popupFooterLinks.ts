@@ -55,7 +55,7 @@ export const VA_QUICK_LINKS: PopupFooterLink[] = [
   {
     id: 'foia-records',
     label: 'FOIA / records request',
-    description: 'VA Form 20-10206 — claim file or C&P exam copies',
+    description: 'VA Form 20-10206: claim file or C&P exam copies',
     url: 'https://www.va.gov/forms/20-10206/request-personal-records/introduction',
     icon: 'i-lucide-folder-search',
     warning: 'A full C-file request can take a year or longer. If you only need C&P exam results, request those specifically to avoid unnecessary delay.'
@@ -63,7 +63,7 @@ export const VA_QUICK_LINKS: PopupFooterLink[] = [
   {
     id: 'track-claims',
     label: 'Track claims on VA.gov',
-    description: 'Open Track Claims — sign in required',
+    description: 'Open Track Claims: sign in required',
     url: 'https://www.va.gov/track-claims/your-claims/',
     icon: 'i-lucide-clipboard-list'
   }

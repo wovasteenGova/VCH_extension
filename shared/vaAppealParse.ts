@@ -71,7 +71,7 @@ const APPEAL_STATUS_LABELS: Record<string, string> = {
   statutory_opt_in: 'Statutory opt-in'
 }
 
-/** VA API typo — normalize before label lookup */
+/** VA API typo: normalize before label lookup */
 function normalizeStatusType(value: string) {
   if (value === 'sc_recieved') return 'sc_received'
   return value

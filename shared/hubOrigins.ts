@@ -1,4 +1,4 @@
-/** Hub production hosts — .com only for links and API probes. */
+/** Hub production hosts: .com only for links and API probes. */
 export const VCH_HUB_ORIGINS = [
   'https://www.veteranscentralhub.com',
   'https://veteranscentralhub.com'

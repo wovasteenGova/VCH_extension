@@ -29,7 +29,7 @@ function parseVaResponse(status: number, text: string): VaFetchResponse {
   const message = typeof detail === 'string' && detail
     ? detail
     : status === 401
-      ? 'Not signed in to VA.gov — open VA.gov and sign in first.'
+      ? 'Not signed in to VA.gov: open VA.gov and sign in first.'
       : status === 403
         ? 'Open Track claims on VA.gov in this browser, then refresh.'
         : `VA API returned ${status}`

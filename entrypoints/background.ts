@@ -22,7 +22,7 @@ export default defineBackground(() => {
             return
           }
         } catch {
-          /* fall through — openPopup needs a recent user gesture in some builds */
+          /* fall through: openPopup needs a recent user gesture in some builds */
         }
         sendResponse({
           ok: false,

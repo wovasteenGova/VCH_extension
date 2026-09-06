@@ -16,7 +16,7 @@ export default defineContentScript({
         sendResponse({
           ok: false,
           status: 0,
-          error: 'Extension context invalidated — refresh this VA.gov tab.'
+          error: 'Extension context invalidated: refresh this VA.gov tab.'
         })
         return
       }

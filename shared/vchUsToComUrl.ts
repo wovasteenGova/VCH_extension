@@ -13,7 +13,7 @@ function replaceVchRoot(host: string, nextTld: 'com' | 'us') {
   return host
 }
 
-/** Legacy Hub .us only — maps to canonical www .com. */
+/** Legacy Hub .us only: maps to canonical www .com. */
 export function mapVchHostnameUsToCom(hostname: string) {
   const host = normalizeHostname(hostname)
   if (host === VCH_ROOT_US || host === `www.${VCH_ROOT_US}`) {

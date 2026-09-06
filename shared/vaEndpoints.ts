@@ -1,4 +1,4 @@
-/** VA.gov session API paths (v0) — same JSON the official site loads when you are signed in. */
+/** VA.gov session API paths (v0): same JSON the official site loads when you are signed in. */
 export const VA_API_ORIGIN = 'https://api.va.gov'
 
 export const VA_ENDPOINTS = {
@@ -13,7 +13,7 @@ export const VA_ENDPOINTS = {
   maintenanceWindows: `${VA_API_ORIGIN}/v0/maintenance_windows`
 } as const
 
-/** Primary VA.gov entry — sign-in redirect lands here and unlocks the claims API. */
+/** Primary VA.gov entry: sign-in redirect lands here and unlocks the claims API. */
 export const VA_TRACK_CLAIMS_PAGE = 'https://www.va.gov/track-claims/your-claims/'
 
 export const VA_CLAIMS_PAGE = VA_TRACK_CLAIMS_PAGE

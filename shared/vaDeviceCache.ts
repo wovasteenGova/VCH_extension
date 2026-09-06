@@ -102,7 +102,7 @@ export async function readVaCacheMeta(): Promise<VaCacheMeta> {
   return cacheMetaFromDevice(await storageGet())
 }
 
-/** Header chip text — say what is actually saved, not a blanket "everything is cached". */
+/** Header chip text: say what is actually saved, not a blanket "everything is cached". */
 export function describeSavedVaCache(meta: VaCacheMeta) {
   const parts: string[] = []
   if (meta.hasClaims) parts.push('claims')

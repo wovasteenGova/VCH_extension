@@ -219,7 +219,7 @@ export default defineContentScript({
       }
       subtitleEl.textContent = 'Sign in above, then tap Sync to save claims on this device.'
       subtitleEl.className = 'subtitle status-warn'
-      detailEl.textContent = 'Nothing cached yet — sync here after your claims list loads.'
+      detailEl.textContent = 'Nothing cached yet: sync here after your claims list loads.'
     }
 
     async function runSync() {
@@ -245,7 +245,7 @@ export default defineContentScript({
             : ''
           subtitleEl.textContent = `Saved ${claimPart}${appealPart} on this device`
           subtitleEl.className = 'subtitle status-ok'
-          detailEl.textContent = 'Open the extension popup — claims, ratings, and appeals stay on this device.'
+          detailEl.textContent = 'Open the extension popup: claims, ratings, and appeals stay on this device.'
           return
         }
 

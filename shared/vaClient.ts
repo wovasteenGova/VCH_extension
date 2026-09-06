@@ -77,7 +77,7 @@ export function unwrapVaData<T = unknown>(payload: unknown): T | null {
   return payload as T
 }
 
-/** Always an array — VA sometimes wraps a single record or nests the list. */
+/** Always an array: VA sometimes wraps a single record or nests the list. */
 export function unwrapVaList(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload
   const data = unwrapVaData(payload)
@@ -98,7 +98,7 @@ export function unwrapVaList(payload: unknown): unknown[] {
 }
 
 export function formatVaDate(value: unknown) {
-  if (typeof value !== 'string' || !value) return '—'
+  if (typeof value !== 'string' || !value) return 'N/A'
   const parsed = Date.parse(value)
   if (!Number.isFinite(parsed)) return value
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(parsed)
