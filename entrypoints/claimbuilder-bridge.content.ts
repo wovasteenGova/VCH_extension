@@ -22,13 +22,30 @@ export default defineContentScript({
       if (!isClaimBuilderBridgeRequest(event.data)) return
 
       void (async () => {
-        const session = await probeVaSession()
+        let connected = false
+        let label = ''
+        try {
+          const viaBackground = await browser.runtime.sendMessage({ type: 'PROBE_VA_SESSION' })
+            .catch(() => null)
+          if (viaBackground && typeof viaBackground === 'object') {
+            const record = viaBackground as { connected?: unknown, label?: unknown }
+            connected = record.connected === true
+            label = typeof record.label === 'string' ? record.label : ''
+          } else {
+            const session = await probeVaSession()
+            connected = session.connected
+            label = session.label
+          }
+        } catch {
+          connected = false
+          label = ''
+        }
         const response: VchClaimBuilderBridgeResponse = {
           source: VCH_EXTENSION_BRIDGE_SOURCE,
           type: VCH_VA_SESSION,
           requestId: event.data.requestId,
-          connected: session.connected,
-          label: session.label
+          connected,
+          label
         }
         window.postMessage(response, event.origin)
       })()
