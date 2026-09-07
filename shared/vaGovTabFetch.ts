@@ -42,15 +42,32 @@ const TRACK_CLAIMS_TAB_PATTERNS = [
   'https://va.gov/track-claims/*'
 ]
 
+type ExtensionTabsApi = {
+  query: (queryInfo: { url?: string | string[] }) => Promise<Array<{ id?: number }>>
+  sendMessage: (tabId: number, message: unknown) => Promise<unknown>
+}
+
+function extensionTabsApi(): ExtensionTabsApi | null {
+  const root = globalThis as {
+    browser?: { tabs?: Partial<ExtensionTabsApi> }
+    chrome?: { tabs?: Partial<ExtensionTabsApi> }
+  }
+  const tabs = root.browser?.tabs ?? root.chrome?.tabs
+  return typeof tabs?.query === 'function' ? tabs as ExtensionTabsApi : null
+}
+
 async function findVaGovTabId(preferTrackClaims = false): Promise<number | null> {
+  const tabs = extensionTabsApi()
+  if (!tabs?.query) return null
+
   if (preferTrackClaims) {
-    const preferred = await browser.tabs.query({ url: TRACK_CLAIMS_TAB_PATTERNS })
+    const preferred = await tabs.query({ url: TRACK_CLAIMS_TAB_PATTERNS })
     const preferredMatch = preferred.find(tab => typeof tab.id === 'number')
     if (preferredMatch?.id != null) return preferredMatch.id
   }
 
-  const tabs = await browser.tabs.query({ url: VA_GOV_TAB_PATTERNS })
-  const match = tabs.find(tab => typeof tab.id === 'number')
+  const matches = await tabs.query({ url: VA_GOV_TAB_PATTERNS })
+  const match = matches.find(tab => typeof tab.id === 'number')
   return match?.id ?? null
 }
 
@@ -60,8 +77,11 @@ export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | n
   const tabId = await findVaGovTabId(preferTrackClaims)
   if (tabId == null) return null
 
+  const tabs = extensionTabsApi()
+  if (!tabs?.sendMessage) return null
+
   try {
-    const response = await browser.tabs.sendMessage(tabId, {
+    const response = await tabs.sendMessage(tabId, {
       type: 'VA_API_FETCH',
       url
     })
@@ -81,7 +101,11 @@ export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | n
   } catch {
     // Content script may not be loaded yet on this tab (open before extension reload).
     try {
-      const results = await browser.scripting.executeScript({
+      const scripting = (globalThis as {
+        browser?: { scripting?: { executeScript?: typeof browser.scripting.executeScript } }
+      }).browser?.scripting
+      if (typeof scripting?.executeScript !== 'function') return null
+      const results = await scripting.executeScript({
         target: { tabId },
         world: 'MAIN',
         func: async (fetchUrl: string) => {
