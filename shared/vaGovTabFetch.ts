@@ -1,3 +1,4 @@
+import { extensionTabsApi } from './extensionTabsApi'
 import type { VaFetchResponse } from './messaging'
 
 const VA_GOV_TAB_PATTERNS = [
@@ -43,25 +44,31 @@ const TRACK_CLAIMS_TAB_PATTERNS = [
 ]
 
 async function findVaGovTabId(preferTrackClaims = false): Promise<number | null> {
+  const tabsApi = extensionTabsApi()
+  if (!tabsApi) return null
+
   if (preferTrackClaims) {
-    const preferred = await browser.tabs.query({ url: TRACK_CLAIMS_TAB_PATTERNS })
+    const preferred = await tabsApi.query({ url: TRACK_CLAIMS_TAB_PATTERNS })
     const preferredMatch = preferred.find(tab => typeof tab.id === 'number')
     if (preferredMatch?.id != null) return preferredMatch.id
   }
 
-  const tabs = await browser.tabs.query({ url: VA_GOV_TAB_PATTERNS })
+  const tabs = await tabsApi.query({ url: VA_GOV_TAB_PATTERNS })
   const match = tabs.find(tab => typeof tab.id === 'number')
   return match?.id ?? null
 }
 
 /** Run fetch inside a signed-in VA.gov tab so session cookies attach like the website. */
 export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | null> {
+  const tabsApi = extensionTabsApi()
+  if (!tabsApi) return null
+
   const preferTrackClaims = url.includes('benefits_claims') || url.includes('/v0/appeals')
   const tabId = await findVaGovTabId(preferTrackClaims)
   if (tabId == null) return null
 
   try {
-    const response = await browser.tabs.sendMessage(tabId, {
+    const response = await tabsApi.sendMessage(tabId, {
       type: 'VA_API_FETCH',
       url
     })
