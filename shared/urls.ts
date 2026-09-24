@@ -2,6 +2,14 @@ import { DEFAULT_HUB_ORIGIN, hubUrlOnOrigin } from './hubOrigins'
 
 export const VCH_HUB_URL = import.meta.env.VITE_VCH_HUB_URL || DEFAULT_HUB_ORIGIN
 export const CLAIMBUILDER_URL = import.meta.env.VITE_CLAIMBUILDER_URL || 'https://claimbuilder.veteranscentralhub.com'
+export const CLAIMBUILDER_TRACK_CLAIMS_PATH = '/track-claims'
+
+export function claimBuilderTrackClaimsUrl(query?: Record<string, string>) {
+  const base = `${CLAIMBUILDER_URL.replace(/\/$/, '')}${CLAIMBUILDER_TRACK_CLAIMS_PATH}`
+  if (!query || !Object.keys(query).length) return base
+  const params = new URLSearchParams(query)
+  return `${base}?${params.toString()}`
+}
 export const SYMPTOM_TRACKER_URL = import.meta.env.VITE_SYMPTOM_TRACKER_URL || 'https://tracker.veteranscentralhub.com'
 /** Canonical Hub page for install help, permissions, and extension updates */
 export const VCH_EXTENSION_HUB_PATH = '/extension'

@@ -1,5 +1,14 @@
 <script setup lang="ts">
+import { claimBuilderTrackClaimsUrl } from '@/shared/urls'
 import { openVaClaimsPage } from '@/shared/vaSignInNavigation'
+
+const props = withDefaults(defineProps<{
+  showTrackOnVchButton?: boolean
+  deferNetworkBootstrap?: boolean
+}>(), {
+  showTrackOnVchButton: false,
+  deferNetworkBootstrap: false
+})
 import {
   fetchVaClaimDetail,
   fetchVaClaimsList,
@@ -173,8 +182,10 @@ async function loadClaims() {
 }
 
 async function bootstrapClaims() {
-  const session = await probeVaSession()
-  vaLiveSession.value = session.connected
+  if (!props.deferNetworkBootstrap) {
+    const session = await probeVaSession()
+    vaLiveSession.value = session.connected
+  }
   await refreshDeviceCacheMeta()
   const restored = await hydrateClaimsFromDevice()
   if (restored) {
@@ -184,11 +195,24 @@ async function bootstrapClaims() {
       isStale.value = true
     }
   }
+  if (props.deferNetworkBootstrap) {
+    if (!claims.value.length) {
+      await restoreClaimsFromDevice()
+    }
+    await refreshDeviceCacheMeta()
+    return
+  }
   await loadClaims()
   if (!claims.value.length) {
     await restoreClaimsFromDevice()
   }
   await refreshDeviceCacheMeta()
+}
+
+function openTrackOnVch() {
+  void browser.tabs.create({
+    url: claimBuilderTrackClaimsUrl({ source: 'extension', sync: '1' })
+  })
 }
 
 onMounted(() => {
@@ -245,6 +269,18 @@ function openVaClaims() {
 
 <template>
   <div class="flex flex-col gap-3 pb-1">
+    <UButton
+      v-if="showTrackOnVchButton"
+      block
+      size="md"
+      color="primary"
+      variant="solid"
+      icon="i-lucide-external-link"
+      label="Track on VCH"
+      class="font-semibold"
+      @click="openTrackOnVch"
+    />
+
     <div class="flex items-center justify-between gap-2">
       <p class="font-medium text-sm text-highlighted">
         Your VA claims
