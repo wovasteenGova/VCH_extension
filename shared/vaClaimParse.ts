@@ -1,7 +1,10 @@
 export type VaClaimPhaseDates = {
   phaseChangeDate?: string
   currentPhaseBack?: boolean
+  /** Legacy benefits_claims field */
   latestPhaseType?: string
+  /** Current benefits_claims list payload (2025+) */
+  phaseType?: string
   previousPhases?: Record<string, string>
 }
 
@@ -189,7 +192,7 @@ export function parseVaClaim(raw: unknown, fallbackId?: string): ParsedVaClaim |
 
   const phaseDates = parsePhaseDates(attrs.claimPhaseDates)
   const status = typeof attrs.status === 'string' ? attrs.status : ''
-  const latestPhase = phaseDates?.latestPhaseType ?? ''
+  const latestPhase = phaseDates?.latestPhaseType ?? phaseDates?.phaseType ?? ''
 
   const title = typeof attrs.displayTitle === 'string' && attrs.displayTitle
     ? attrs.displayTitle
