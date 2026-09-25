@@ -8,12 +8,15 @@ import {
   touchVaCacheSync
 } from './vaDeviceCache'
 import { importTrackSnapshotToClaimBuilder } from './claimBuilderTrackImport'
+import { buildDecisionLetterUploadsForTrack } from './vaClaimLetters'
 import { parseVaResponse, VA_FETCH_HEADERS } from './vaGovTabFetch'
 
 export type VaPageClaimsSyncResult = {
   ok: boolean
   count: number
   appeals: number
+  /** Decision letter PDFs fetched from VA.gov during this sync (not stored on device). */
+  files: number
   error?: string
 }
 
@@ -79,19 +82,49 @@ export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
   if (savedClaims || savedAppeals) {
     await touchVaCacheSync()
     const cache = await readVaDeviceCache()
-    void importTrackSnapshotToClaimBuilder({
-      claims: cache.claims,
-      appeals: cache.appeals,
-      deviceLastSyncedAt: cache.lastSyncedAt,
-      vaLabel: cache.vaLabel,
-      includeLetters: true
-    }).catch(() => {
-      // Cloud upload is optional when Hub is not signed in.
-    })
+    let files = 0
+    try {
+      const letters = await buildDecisionLetterUploadsForTrack({
+        claims: cache.claims,
+        appeals: cache.appeals
+      })
+      files = letters.length
+      if (letters.length) {
+        await importTrackSnapshotToClaimBuilder({
+          claims: cache.claims,
+          appeals: cache.appeals,
+          deviceLastSyncedAt: cache.lastSyncedAt,
+          vaLabel: cache.vaLabel,
+          letters,
+          includeLetters: false
+        }).catch(() => {
+          // Cloud upload is optional when Hub is not signed in.
+        })
+      } else {
+        void importTrackSnapshotToClaimBuilder({
+          claims: cache.claims,
+          appeals: cache.appeals,
+          deviceLastSyncedAt: cache.lastSyncedAt,
+          vaLabel: cache.vaLabel,
+          includeLetters: false
+        }).catch(() => {
+          // Cloud upload is optional when Hub is not signed in.
+        })
+      }
+    } catch {
+      void importTrackSnapshotToClaimBuilder({
+        claims: cache.claims,
+        appeals: cache.appeals,
+        deviceLastSyncedAt: cache.lastSyncedAt,
+        vaLabel: cache.vaLabel,
+        includeLetters: false
+      }).catch(() => {})
+    }
     return {
       ok: true,
       count: cache.claims.length,
-      appeals: cache.appeals.length
+      appeals: cache.appeals.length,
+      files
     }
   }
 
@@ -100,7 +133,8 @@ export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
     return {
       ok: true,
       count: cache.claims.length,
-      appeals: cache.appeals.length
+      appeals: cache.appeals.length,
+      files: 0
     }
   }
 
@@ -114,6 +148,7 @@ export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
     ok: false,
     count: 0,
     appeals: 0,
+    files: 0,
     error
   }
 }

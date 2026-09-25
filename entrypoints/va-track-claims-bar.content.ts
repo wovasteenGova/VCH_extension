@@ -243,7 +243,8 @@ export default defineContentScript({
           const appealPart = result.appeals
             ? `, ${result.appeals} appeal${result.appeals === 1 ? '' : 's'}`
             : ''
-          subtitleEl.textContent = `Saved ${claimPart}${appealPart} on this device`
+          const filePart = `, ${result.files} file${result.files === 1 ? '' : 's'}`
+          subtitleEl.textContent = `Saved ${claimPart}${appealPart}${filePart} on this device`
           subtitleEl.className = 'subtitle status-ok'
           detailEl.textContent = 'Open the extension popup: claims, ratings, and appeals stay on this device.'
           return
