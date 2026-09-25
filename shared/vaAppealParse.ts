@@ -19,6 +19,7 @@ export type ParsedVaAppeal = {
   active: boolean
   updatedAt?: string
   filedDate?: string
+  decisionDate?: string
   programArea?: string
   location?: string
   description?: string
@@ -104,6 +105,28 @@ function parseIssues(raw: unknown): ParsedVaAppealIssue[] {
     .filter(Boolean) as ParsedVaAppealIssue[]
 }
 
+function parseVaAppealDateMs(value?: string): number {
+  if (!value) return 0
+  const trimmed = value.trim()
+  if (!trimmed) return 0
+  let ms = Date.parse(trimmed)
+  if (Number.isFinite(ms)) return ms
+  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed)
+  if (slash) {
+    const month = slash[1]!.padStart(2, '0')
+    const day = slash[2]!.padStart(2, '0')
+    const year = slash[3]!
+    ms = Date.parse(`${year}-${month}-${day}T12:00:00.000Z`)
+    if (Number.isFinite(ms)) return ms
+  }
+  const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
+  if (isoDay) {
+    ms = Date.parse(`${trimmed}T12:00:00.000Z`)
+    if (Number.isFinite(ms)) return ms
+  }
+  return 0
+}
+
 function readFiledDate(attrs: Record<string, unknown>): string | undefined {
   const events = Array.isArray(attrs.events) ? attrs.events : []
   for (const event of events) {
@@ -115,6 +138,63 @@ function readFiledDate(attrs: Record<string, unknown>): string | undefined {
     }
   }
   return undefined
+}
+
+function isAppealDecisionEventType(type: string) {
+  return /decision|_closed|complete|grant|denied|effectuation|remand|withdrawn|merged|death|ftr|other_close/i.test(type)
+    && !type.endsWith('_request')
+}
+
+function readLatestEventDate(
+  attrs: Record<string, unknown>,
+  predicate: (type: string) => boolean
+): string | undefined {
+  const events = Array.isArray(attrs.events) ? attrs.events : []
+  let best: string | undefined
+  let bestMs = 0
+  for (const event of events) {
+    if (!event || typeof event !== 'object') continue
+    const row = event as Record<string, unknown>
+    const type = typeof row.type === 'string' ? row.type : ''
+    if (!predicate(type)) continue
+    const date = typeof row.date === 'string' ? row.date : ''
+    const ms = parseVaAppealDateMs(date)
+    if (ms > bestMs) {
+      bestMs = ms
+      best = date
+    }
+  }
+  return best
+}
+
+function readDecisionDate(
+  attrs: Record<string, unknown>,
+  issues: ParsedVaAppealIssue[]
+): string | undefined {
+  const fromEvents = readLatestEventDate(attrs, isAppealDecisionEventType)
+  let best = fromEvents
+  let bestMs = parseVaAppealDateMs(fromEvents)
+  for (const issue of issues) {
+    const ms = parseVaAppealDateMs(issue.date)
+    if (ms > bestMs) {
+      bestMs = ms
+      best = issue.date
+    }
+  }
+  return best
+}
+
+function appealRecencyMs(appeal: Pick<ParsedVaAppeal, 'active' | 'updatedAt' | 'filedDate' | 'decisionDate' | 'issues'>) {
+  const issueMax = appeal.issues.reduce(
+    (max, issue) => Math.max(max, parseVaAppealDateMs(issue.date)),
+    0
+  )
+  const updated = parseVaAppealDateMs(appeal.updatedAt)
+  const decision = parseVaAppealDateMs(appeal.decisionDate)
+  if (!appeal.active) {
+    return Math.max(decision, updated, issueMax)
+  }
+  return Math.max(parseVaAppealDateMs(appeal.filedDate), updated, issueMax)
 }
 
 function shortConditionLabel(text: string) {
@@ -176,6 +256,8 @@ export function parseVaAppeal(raw: unknown): ParsedVaAppeal | null {
   const description = typeof attrs.description === 'string' ? attrs.description.trim() : ''
   const issues = parseIssues(attrs.issues)
   const active = attrs.active === true
+  const decisionDate = readDecisionDate(attrs, issues)
+  const updatedRaw = typeof attrs.updated === 'string' ? attrs.updated : undefined
 
   return {
     id,
@@ -186,8 +268,9 @@ export function parseVaAppeal(raw: unknown): ParsedVaAppeal | null {
     statusType,
     statusLabel: formatVaEnumLabel(statusType, APPEAL_STATUS_LABELS),
     active,
-    updatedAt: typeof attrs.updated === 'string' ? attrs.updated : undefined,
+    updatedAt: updatedRaw ?? decisionDate,
     filedDate: readFiledDate(attrs),
+    decisionDate,
     programArea: typeof attrs.programArea === 'string' ? attrs.programArea : undefined,
     location: typeof attrs.location === 'string' ? attrs.location : undefined,
     description: description || undefined,
@@ -199,9 +282,7 @@ export function parseVaAppeal(raw: unknown): ParsedVaAppeal | null {
 export function sortVaAppeals(appeals: ParsedVaAppeal[]) {
   return [...appeals].sort((a, b) => {
     if (a.active !== b.active) return a.active ? -1 : 1
-    const aTime = Date.parse(a.updatedAt || a.filedDate || '')
-    const bTime = Date.parse(b.updatedAt || b.filedDate || '')
-    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0)
+    return appealRecencyMs(b) - appealRecencyMs(a)
   })
 }
 
