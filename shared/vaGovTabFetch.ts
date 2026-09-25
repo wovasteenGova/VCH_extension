@@ -121,4 +121,72 @@ export async function hasOpenVaGovTab() {
   return (await findVaGovTabId()) != null
 }
 
+async function sendVaTabMessage(tabId: number, message: Record<string, unknown>) {
+  const tabsApi = extensionTabsApi()
+  if (!tabsApi) return null
+
+  try {
+    const response = await tabsApi.sendMessage(tabId, message)
+    if (!response || typeof response !== 'object') return null
+    return response as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+export async function postJsonViaVaGovTab(url: string, body: unknown): Promise<VaFetchResponse | null> {
+  if (!url.startsWith('https://api.va.gov/')) {
+    return { ok: false, status: 0, error: 'Only api.va.gov URLs are allowed' }
+  }
+
+  const tabId = await findVaGovTabId(true)
+  if (tabId == null) return null
+
+  const record = await sendVaTabMessage(tabId, {
+    type: 'VA_API_POST_JSON',
+    url,
+    body
+  })
+  if (!record || typeof record.status !== 'number') return null
+  return parseVaResponse(record.status, typeof record.text === 'string' ? record.text : '')
+}
+
+export async function fetchBinaryViaVaGovTab(
+  url: string,
+  options?: { method?: string, headers?: Record<string, string>, body?: string }
+): Promise<{ ok: boolean, status: number, base64: string, contentType?: string | null, error?: string } | null> {
+  if (!url.startsWith('https://api.va.gov/')) {
+    return { ok: false, status: 0, base64: '', error: 'Only api.va.gov URLs are allowed' }
+  }
+
+  const tabId = await findVaGovTabId(true)
+  if (tabId == null) return null
+
+  const record = await sendVaTabMessage(tabId, {
+    type: 'VA_API_FETCH_BINARY',
+    url,
+    method: options?.method ?? 'GET',
+    headers: options?.headers,
+    body: options?.body
+  })
+  if (!record || typeof record.status !== 'number') return null
+
+  const base64 = typeof record.base64 === 'string' ? record.base64 : ''
+  if (record.status >= 200 && record.status < 300 && base64) {
+    return {
+      ok: true,
+      status: record.status,
+      base64,
+      contentType: typeof record.contentType === 'string' ? record.contentType : null
+    }
+  }
+
+  return {
+    ok: false,
+    status: record.status,
+    base64: '',
+    error: typeof record.error === 'string' ? record.error : `VA download returned ${record.status}`
+  }
+}
+
 export { VA_FETCH_HEADERS, parseVaResponse }

@@ -35,6 +35,8 @@ export type VchClaimBuilderTrackCacheResponse = {
   appeals?: unknown[]
   deviceLastSyncedAt?: string | null
   vaLabel?: string | null
+  /** Ephemeral PDF payloads for this sync only (not stored in extension cache). */
+  letters?: unknown[]
 }
 
 const CLAIMBUILDER_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)*veteranscentralhub\.(com|us)$/i

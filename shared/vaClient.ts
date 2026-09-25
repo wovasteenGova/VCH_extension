@@ -25,7 +25,7 @@ async function vaFetchDirect(url: string): Promise<VaFetchResponse> {
   }
 }
 
-async function vaFetch(url: string): Promise<VaFetchResponse> {
+export async function vaFetch(url: string): Promise<VaFetchResponse> {
   if (!url.startsWith('https://api.va.gov/')) {
     return { ok: false, status: 0, error: 'Only api.va.gov URLs are allowed' }
   }

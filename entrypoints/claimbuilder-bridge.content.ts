@@ -11,6 +11,8 @@ import {
 } from '@/shared/claimBuilderBridge'
 import { type ConnectionState } from '@/shared/connectionStatus'
 import { safeExtensionRuntimeMessage } from '@/shared/extensionContext'
+import { buildDecisionLetterUploadsForTrack } from '@/shared/vaClaimLetters'
+import { readHubAccessToken } from '@/shared/hubSessionRead'
 import { readVaDeviceCache } from '@/shared/vaDeviceCache'
 
 const DISCONNECTED_SESSION: ConnectionState = {
@@ -55,6 +57,18 @@ export default defineContentScript({
       if (isClaimBuilderTrackCacheRequest(event.data)) {
         void (async () => {
           const cache = await readVaDeviceCache()
+          let letters: unknown[] | undefined
+          const hubToken = await readHubAccessToken()
+          if (hubToken && (cache.claims.length || cache.appeals.length)) {
+            try {
+              letters = await buildDecisionLetterUploadsForTrack({
+                claims: cache.claims,
+                appeals: cache.appeals
+              })
+            } catch {
+              letters = undefined
+            }
+          }
           const response: VchClaimBuilderTrackCacheResponse = {
             source: VCH_EXTENSION_BRIDGE_SOURCE,
             type: VCH_VA_TRACK_CACHE,
@@ -63,7 +77,8 @@ export default defineContentScript({
             claims: cache.claims,
             appeals: cache.appeals,
             deviceLastSyncedAt: cache.lastSyncedAt,
-            vaLabel: cache.vaLabel
+            vaLabel: cache.vaLabel,
+            ...(letters?.length ? { letters } : {})
           }
           window.postMessage(response, event.origin)
         })()

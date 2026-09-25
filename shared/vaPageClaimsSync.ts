@@ -7,6 +7,7 @@ import {
   saveVaClaimsCache,
   touchVaCacheSync
 } from './vaDeviceCache'
+import { importTrackSnapshotToClaimBuilder } from './claimBuilderTrackImport'
 import { parseVaResponse, VA_FETCH_HEADERS } from './vaGovTabFetch'
 
 export type VaPageClaimsSyncResult = {
@@ -78,6 +79,15 @@ export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
   if (savedClaims || savedAppeals) {
     await touchVaCacheSync()
     const cache = await readVaDeviceCache()
+    void importTrackSnapshotToClaimBuilder({
+      claims: cache.claims,
+      appeals: cache.appeals,
+      deviceLastSyncedAt: cache.lastSyncedAt,
+      vaLabel: cache.vaLabel,
+      includeLetters: true
+    }).catch(() => {
+      // Cloud upload is optional when Hub is not signed in.
+    })
     return {
       ok: true,
       count: cache.claims.length,
