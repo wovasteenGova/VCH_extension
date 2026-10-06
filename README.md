@@ -15,21 +15,39 @@ Built with [WXT](https://wxt.dev) (Manifest V3) and [Nuxt UI v4](https://ui.nuxt
 
 **Canonical install & help URL:** https://veteranscentralhub.com/extension
 
+## Install (veterans, no build)
+
+**Recommended:** [veteranscentralhub.com/extension](https://www.veteranscentralhub.com/extension) (download hosted on the Hub).
+
+Direct zip: [veteranscentralhub.com/downloads/vch-web-extension-chrome.zip](https://www.veteranscentralhub.com/downloads/vch-web-extension-chrome.zip)
+
+GitHub Releases (optional): [releases/latest](https://github.com/wovasteenGova/VCH_extension/releases/latest)
+
+Step-by-step copy: [docs/INSTALL-CHROME.md](docs/INSTALL-CHROME.md).
+
 ## Privacy
 
 - VA API calls run in the extension background with `credentials: include` — session cookies stay between your browser and VA
 - No VA passwords stored
 - Not affiliated with the U.S. Department of Veterans Affairs
 
-## Setup
+## Maintainer: publish a release zip
+
+Bump `version` in `package.json`, commit, then tag and push (GitHub Actions builds and attaches the zip):
+
+```bash
+git tag v0.1.18
+git push origin v0.1.18
+```
+
+Local build (optional):
 
 ```bash
 cp .env.example .env
 npm install
-npm run build
+npm run build   # → .output/chrome-mv3
+npm run zip     # → .output/vch-extension-<version>-chrome.zip
 ```
-
-Load in Chrome: **Extensions → Developer mode → Load unpacked** → `.output/chrome-mv3`
 
 For development, `npm run dev` loads `.output/chrome-mv3-dev` (requires the dev server running).
 
