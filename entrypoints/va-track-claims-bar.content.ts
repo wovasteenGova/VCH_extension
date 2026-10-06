@@ -243,10 +243,14 @@ export default defineContentScript({
           const appealPart = result.appeals
             ? `, ${result.appeals} appeal${result.appeals === 1 ? '' : 's'}`
             : ''
-          const filePart = `, ${result.files} file${result.files === 1 ? '' : 's'}`
-          subtitleEl.textContent = `Saved ${claimPart}${appealPart}${filePart} on this device`
+          const letterPart = result.files
+            ? ` · ${result.files} decision letter${result.files === 1 ? '' : 's'} pulled for ClaimBuilder`
+            : ''
+          subtitleEl.textContent = `Saved ${claimPart}${appealPart} on this device${letterPart}`
           subtitleEl.className = 'subtitle status-ok'
-          detailEl.textContent = 'Open the extension popup: claims, ratings, and appeals stay on this device.'
+          detailEl.textContent = result.files
+            ? 'Claims and appeals stay on this device. Letter PDFs were sent toward ClaimBuilder if you are signed in there.'
+            : 'Open the extension popup: claims, ratings, and appeals stay on this device.'
           return
         }
 

@@ -12,7 +12,6 @@ import {
 import { type ConnectionState } from '@/shared/connectionStatus'
 import { safeExtensionRuntimeMessage } from '@/shared/extensionContext'
 import { buildDecisionLetterUploadsForTrack } from '@/shared/vaClaimLetters'
-import { readHubAccessToken } from '@/shared/hubSessionRead'
 import { readVaDeviceCache } from '@/shared/vaDeviceCache'
 
 const DISCONNECTED_SESSION: ConnectionState = {
@@ -58,8 +57,7 @@ export default defineContentScript({
         void (async () => {
           const cache = await readVaDeviceCache()
           let letters: unknown[] | undefined
-          const hubToken = await readHubAccessToken()
-          if (hubToken && (cache.claims.length || cache.appeals.length)) {
+          if (cache.claims.length || cache.appeals.length) {
             try {
               letters = await buildDecisionLetterUploadsForTrack({
                 claims: cache.claims,
