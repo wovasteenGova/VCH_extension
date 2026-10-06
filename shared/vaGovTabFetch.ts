@@ -40,7 +40,11 @@ function parseVaResponse(status: number, text: string): VaFetchResponse {
 
 const TRACK_CLAIMS_TAB_PATTERNS = [
   'https://www.va.gov/track-claims/*',
-  'https://va.gov/track-claims/*'
+  'https://va.gov/track-claims/*',
+  'https://www.va.gov/my-va',
+  'https://va.gov/my-va',
+  'https://www.va.gov/my-va/*',
+  'https://va.gov/my-va/*'
 ]
 
 async function findVaGovTabId(preferTrackClaims = false): Promise<number | null> {

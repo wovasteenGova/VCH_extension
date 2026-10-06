@@ -1,4 +1,5 @@
 import { fetchVaClaimDetail, fetchVaUser } from './vaClient'
+import { fetchVaJsonInPage, isVaGovPageContext } from './vaInPageFetch'
 import type { ParsedVaClaim } from './vaClaimParse'
 
 export type VaClaimantIdentifier = {
@@ -88,9 +89,29 @@ export function claimantIdentifierRequestData(identifier: VaClaimantIdentifier) 
   return data
 }
 
+async function fetchClaimDetailForIdentifier(claimId: string) {
+  if (isVaGovPageContext()) {
+    return fetchVaJsonInPage(`https://api.va.gov/v0/benefits_claims/${encodeURIComponent(claimId)}`)
+  }
+  return fetchVaClaimDetail(claimId)
+}
+
 export async function fetchVaClaimantIdentifier(
   claims: ParsedVaClaim[] = []
 ): Promise<VaClaimantIdentifier | null> {
+  if (isVaGovPageContext()) {
+    const userInPage = await fetchVaJsonInPage('https://api.va.gov/v0/user')
+    if (userInPage.ok) {
+      const fromUser = parseVaClaimantIdentifier(userInPage.data)
+      if (fromUser?.fileNumber || fromUser?.participantId != null) return fromUser
+    }
+    const personalInfo = await fetchVaJsonInPage('https://api.va.gov/v0/profile/personal_information')
+    if (personalInfo.ok) {
+      const fromProfile = parseVaClaimantIdentifier(personalInfo.data)
+      if (fromProfile?.fileNumber || fromProfile?.participantId != null) return fromProfile
+    }
+  }
+
   const userRes = await fetchVaUser()
   if (userRes.ok) {
     const fromUser = parseVaClaimantIdentifier(userRes.data)
@@ -99,7 +120,7 @@ export async function fetchVaClaimantIdentifier(
 
   for (const claim of claims.slice(0, 3)) {
     if (!claim.id) continue
-    const detailRes = await fetchVaClaimDetail(claim.id)
+    const detailRes = await fetchClaimDetailForIdentifier(claim.id)
     if (!detailRes.ok) continue
     const fromDetail = parseVaClaimantIdentifier(detailRes.data)
     if (fromDetail?.fileNumber || fromDetail?.participantId != null) return fromDetail

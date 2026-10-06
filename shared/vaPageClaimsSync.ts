@@ -7,15 +7,15 @@ import {
   saveVaClaimsCache,
   touchVaCacheSync
 } from './vaDeviceCache'
-import { importTrackSnapshotToClaimBuilder } from './claimBuilderTrackImport'
 import { buildDecisionLetterUploadsForTrack } from './vaClaimLetters'
-import { parseVaResponse, VA_FETCH_HEADERS } from './vaGovTabFetch'
+import { fetchVaJsonInPage } from './vaInPageFetch'
+import { savePendingTrackLetters } from './vaPendingLettersCache'
 
 export type VaPageClaimsSyncResult = {
   ok: boolean
   count: number
   appeals: number
-  /** Decision letter PDFs fetched from VA.gov during this sync (not stored on device). */
+  /** Decision letter PDFs fetched from VA.gov (held for ClaimBuilder after user approves cloud sync). */
   files: number
   error?: string
 }
@@ -23,32 +23,13 @@ export type VaPageClaimsSyncResult = {
 const PAGE_SYNC_TIMEOUT_MS = 15000
 
 async function fetchVaApiOnPage(url: string) {
-  const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), PAGE_SYNC_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      credentials: 'include',
-      headers: VA_FETCH_HEADERS,
-      signal: controller.signal,
-      referrer: 'https://www.va.gov/track-claims/your-claims/'
-    })
-    const text = await response.text()
-    return parseVaResponse(response.status, text)
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      return { ok: false, status: 0, error: 'VA API timed out: tap Sync to try again.' }
-    }
-
-    return {
-      ok: false,
-      status: 0,
-      error: error instanceof Error ? error.message : 'Network error talking to VA API'
-    }
-  } finally {
-    clearTimeout(timer)
-  }
+  const timeout = new Promise<{ ok: false, status: 0, error: string }>((resolve) => {
+    window.setTimeout(
+      () => resolve({ ok: false, status: 0, error: 'VA API timed out: tap Sync to try again.' }),
+      PAGE_SYNC_TIMEOUT_MS
+    )
+  })
+  return Promise.race([fetchVaJsonInPage(url), timeout])
 }
 
 /** Fast claims sync for the VA.gov track-claims bar: in-page fetch only, no ratings/profile. */
@@ -90,35 +71,10 @@ export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
       })
       files = letters.length
       if (letters.length) {
-        await importTrackSnapshotToClaimBuilder({
-          claims: cache.claims,
-          appeals: cache.appeals,
-          deviceLastSyncedAt: cache.lastSyncedAt,
-          vaLabel: cache.vaLabel,
-          letters,
-          includeLetters: false
-        }).catch(() => {
-          // Cloud upload is optional when Hub is not signed in.
-        })
-      } else {
-        void importTrackSnapshotToClaimBuilder({
-          claims: cache.claims,
-          appeals: cache.appeals,
-          deviceLastSyncedAt: cache.lastSyncedAt,
-          vaLabel: cache.vaLabel,
-          includeLetters: false
-        }).catch(() => {
-          // Cloud upload is optional when Hub is not signed in.
-        })
+        await savePendingTrackLetters(letters)
       }
     } catch {
-      void importTrackSnapshotToClaimBuilder({
-        claims: cache.claims,
-        appeals: cache.appeals,
-        deviceLastSyncedAt: cache.lastSyncedAt,
-        vaLabel: cache.vaLabel,
-        includeLetters: false
-      }).catch(() => {})
+      files = 0
     }
     return {
       ok: true,

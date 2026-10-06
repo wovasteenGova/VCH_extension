@@ -4,6 +4,7 @@ import {
   isExtensionContextValid,
   safeExtensionRuntimeMessage
 } from '@/shared/extensionContext'
+import { isVaMyVaPathname, VA_TRACK_CLAIMS_BAR_MATCHES } from '@/shared/vaEndpoints'
 import { syncClaimsFromVaPage } from '@/shared/vaPageClaimsSync'
 import {
   readTrackClaimsBarCollapsed,
@@ -133,12 +134,10 @@ const BAR_STYLES = `
 `
 
 export default defineContentScript({
-  matches: [
-    'https://www.va.gov/track-claims/*',
-    'https://va.gov/track-claims/*'
-  ],
+  matches: [...VA_TRACK_CLAIMS_BAR_MATCHES],
   runAt: 'document_idle',
   main() {
+    const onMyVa = isVaMyVaPathname(window.location.pathname)
     if (document.getElementById(BAR_HOST_ID)) return
 
     const host = document.createElement('div')
@@ -217,9 +216,13 @@ export default defineContentScript({
         detailEl.textContent = 'Open the extension popup for ratings, appeals, and ClaimBuilder tools.'
         return
       }
-      subtitleEl.textContent = 'Sign in above, then tap Sync to save claims on this device.'
+      subtitleEl.textContent = onMyVa
+        ? 'Signed in to My VA? Tap Sync to save claims on this device.'
+        : 'Sign in above, then tap Sync to save claims on this device.'
       subtitleEl.className = 'subtitle status-warn'
-      detailEl.textContent = 'Nothing cached yet: sync here after your claims list loads.'
+      detailEl.textContent = onMyVa
+        ? 'Sync works from My VA — you do not need to open Track claims first.'
+        : 'Nothing cached yet: sync here after your claims list loads.'
     }
 
     async function runSync() {
@@ -244,23 +247,27 @@ export default defineContentScript({
             ? `, ${result.appeals} appeal${result.appeals === 1 ? '' : 's'}`
             : ''
           const letterPart = result.files
-            ? ` · ${result.files} decision letter${result.files === 1 ? '' : 's'} pulled for ClaimBuilder`
-            : ''
+            ? ` · ${result.files} decision letter${result.files === 1 ? '' : 's'} ready for ClaimBuilder`
+            : ' · 0 decision letters from VA right now'
           subtitleEl.textContent = `Saved ${claimPart}${appealPart} on this device${letterPart}`
           subtitleEl.className = 'subtitle status-ok'
           detailEl.textContent = result.files
-            ? 'Claims and appeals stay on this device. Letter PDFs were sent toward ClaimBuilder if you are signed in there.'
-            : 'Open the extension popup: claims, ratings, and appeals stay on this device.'
+            ? 'Decision letters stay in the extension until you approve cloud sync on ClaimBuilder Track claims.'
+            : 'Claims and appeals are on this device. Approve Track claims sync on ClaimBuilder to store letters when VA returns them.'
           return
         }
 
         subtitleEl.textContent = result.error || 'Could not sync claims'
         subtitleEl.className = 'subtitle status-error'
-        detailEl.textContent = 'Make sure you are signed in and this claims page finished loading.'
+        detailEl.textContent = onMyVa
+          ? 'Make sure you are signed in to My VA, wait a moment, then tap Sync again.'
+          : 'Make sure you are signed in and this claims page finished loading.'
       } catch (error) {
         subtitleEl.textContent = error instanceof Error ? error.message : 'Could not sync claims'
         subtitleEl.className = 'subtitle status-error'
-        detailEl.textContent = 'Make sure you are signed in and this claims page finished loading.'
+        detailEl.textContent = onMyVa
+          ? 'Make sure you are signed in to My VA, wait a moment, then tap Sync again.'
+          : 'Make sure you are signed in and this claims page finished loading.'
       } finally {
         syncing = false
         syncBtn.disabled = false

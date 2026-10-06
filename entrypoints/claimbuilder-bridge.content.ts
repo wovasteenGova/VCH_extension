@@ -12,6 +12,10 @@ import {
 import { type ConnectionState } from '@/shared/connectionStatus'
 import { safeExtensionRuntimeMessage } from '@/shared/extensionContext'
 import { buildDecisionLetterUploadsForTrack } from '@/shared/vaClaimLetters'
+import {
+  readPendingTrackLetters,
+  savePendingTrackLetters
+} from '@/shared/vaPendingLettersCache'
 import { readVaDeviceCache } from '@/shared/vaDeviceCache'
 
 const DISCONNECTED_SESSION: ConnectionState = {
@@ -56,15 +60,19 @@ export default defineContentScript({
       if (isClaimBuilderTrackCacheRequest(event.data)) {
         void (async () => {
           const cache = await readVaDeviceCache()
-          let letters: unknown[] | undefined
+          let letters: unknown[] | undefined = await readPendingTrackLetters()
           if (cache.claims.length || cache.appeals.length) {
             try {
-              letters = await buildDecisionLetterUploadsForTrack({
+              const fresh = await buildDecisionLetterUploadsForTrack({
                 claims: cache.claims,
                 appeals: cache.appeals
               })
+              if (fresh.length) {
+                letters = fresh
+                await savePendingTrackLetters(fresh)
+              }
             } catch {
-              letters = undefined
+              /* keep pending letters from the last VA.gov sync if any */
             }
           }
           const response: VchClaimBuilderTrackCacheResponse = {
