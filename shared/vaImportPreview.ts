@@ -107,5 +107,5 @@ export function formatVaImportSuccessMessage(input: {
   }
 
   const summary = parts.length ? parts.join(' · ') : 'VA ratings saved to your account'
-  return `${summary}. Opening ClaimBuilder settings to review.`
+  return `${summary}. You can review project settings in ClaimBuilder and your rating on Hub entitlements.`
 }

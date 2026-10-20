@@ -337,7 +337,7 @@ async function populateClaimBuilderSettings() {
     void refreshClaimBuilderSyncStatus()
     openClaimBuilder(true)
   } catch (caught) {
-    importError.value = caught instanceof Error ? caught.message : 'Could not populate ClaimBuilder settings.'
+    importError.value = caught instanceof Error ? caught.message : 'Could not save to your VCH account.'
     if (importError.value.toLowerCase().includes('sign in')) {
       await refreshHubSession()
     }
@@ -628,7 +628,7 @@ onUnmounted(() => {
               </span>
               <div class="min-w-0">
                 <p class="font-medium text-xs text-highlighted">
-                  Synced with ClaimBuilder
+                  Synced with your VCH account
                 </p>
                 <p v-if="claimBuilderSyncedAt" class="truncate text-[0.65rem] text-muted">
                   Last populated {{ formatVaDate(claimBuilderSyncedAt) }}
@@ -651,10 +651,10 @@ onUnmounted(() => {
         >
           <div class="space-y-1">
             <p class="font-medium text-sm text-highlighted">
-              Populate VCH settings with claim data
+              Save VA data to your VCH account
             </p>
             <p class="text-muted text-[0.65rem] leading-relaxed">
-              With your approval, VCH sends the items below to your signed-in ClaimBuilder account. Data is stored on a secure third-party cloud service and used only to pre-fill Project settings and current ratings for increase claims.
+              With your approval, VCH sends the items below to your signed-in Veterans Central Hub account. Data is stored securely and used to pre-fill ClaimBuilder project settings, Hub entitlements guidance, and related benefits tools. The benefits calculator still asks before applying your rating.
             </p>
           </div>
 
@@ -668,7 +668,7 @@ onUnmounted(() => {
               @click="importPreviewExpanded = !importPreviewExpanded"
             >
               <span class="font-medium text-[0.65rem] text-highlighted">
-                Will send to ClaimBuilder
+                Will send to your VCH account
                 <span class="font-normal text-muted">({{ importPreviewItems.length }})</span>
               </span>
               <UIcon
@@ -707,7 +707,7 @@ onUnmounted(() => {
               class="mt-0.5 size-4 rounded border-default accent-primary"
             >
             <span class="text-[0.65rem] leading-relaxed text-muted">
-              I approve sending the data listed above to my ClaimBuilder account.
+              I approve sending the data listed above to my signed-in VCH account.
             </span>
           </label>
 
@@ -731,7 +731,7 @@ onUnmounted(() => {
               v-if="!hubCanImport && !importError"
               class="rounded-md border border-warning/30 bg-warning/10 px-2.5 py-2 text-xs leading-relaxed text-warning"
             >
-              Sign in at veteranscentralhub.com in this browser to populate ClaimBuilder settings.
+              Sign in at veteranscentralhub.com in this browser to save this data to your account.
             </p>
           </div>
 
@@ -743,7 +743,7 @@ onUnmounted(() => {
               leading-icon="i-lucide-cloud-upload"
               :disabled="!importConsent || !hubCanImport"
               :loading="importBusy"
-              label="Populate ClaimBuilder settings"
+              label="Save to my VCH account"
               @click="populateClaimBuilderSettings"
             />
             <UButton
