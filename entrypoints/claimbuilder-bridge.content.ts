@@ -4,6 +4,7 @@ import {
   isClaimBuilderTrackCacheRequest,
   VCH_EXTENSION_BRIDGE_SOURCE,
   VCH_PROBE_VA_SESSION,
+  VCH_PROBE_VA_TRACK_CACHE,
   VCH_VA_SESSION,
   VCH_VA_TRACK_CACHE,
   type VchClaimBuilderBridgeResponse,
@@ -16,7 +17,10 @@ import {
   readPendingTrackLetters,
   savePendingTrackLetters
 } from '@/shared/vaPendingLettersCache'
-import { readVaDeviceCache } from '@/shared/vaDeviceCache'
+import {
+  readVaTrackBridgeCachePayload,
+  type VaTrackBridgeCachePayload
+} from '@/shared/vaTrackBridgeCache'
 
 const DISCONNECTED_SESSION: ConnectionState = {
   connected: false,
@@ -44,6 +48,16 @@ async function probeVaSessionForBridge(): Promise<ConnectionState> {
   return inflightProbe
 }
 
+async function readTrackCacheForClaimBuilderBridge() {
+  const fromBackground = await safeExtensionRuntimeMessage<VaTrackBridgeCachePayload>({
+    type: VCH_PROBE_VA_TRACK_CACHE
+  })
+  if (fromBackground?.ok === true) {
+    return fromBackground
+  }
+  return readVaTrackBridgeCachePayload()
+}
+
 export default defineContentScript({
   matches: [
     'https://claimbuilder.veteranscentralhub.com/*',
@@ -59,22 +73,8 @@ export default defineContentScript({
 
       if (isClaimBuilderTrackCacheRequest(event.data)) {
         void (async () => {
-          const cache = await readVaDeviceCache()
-          let letters: unknown[] | undefined = await readPendingTrackLetters()
-          if (cache.claims.length || cache.appeals.length) {
-            try {
-              const fresh = await buildDecisionLetterUploadsForTrack({
-                claims: cache.claims,
-                appeals: cache.appeals
-              })
-              if (fresh.length) {
-                letters = fresh
-                await savePendingTrackLetters(fresh)
-              }
-            } catch {
-              /* keep pending letters from the last VA.gov sync if any */
-            }
-          }
+          const cache = await readTrackCacheForClaimBuilderBridge()
+          const pendingLetters = await readPendingTrackLetters()
           const response: VchClaimBuilderTrackCacheResponse = {
             source: VCH_EXTENSION_BRIDGE_SOURCE,
             type: VCH_VA_TRACK_CACHE,
@@ -82,11 +82,22 @@ export default defineContentScript({
             ok: true,
             claims: cache.claims,
             appeals: cache.appeals,
-            deviceLastSyncedAt: cache.lastSyncedAt,
+            deviceLastSyncedAt: cache.deviceLastSyncedAt,
             vaLabel: cache.vaLabel,
-            ...(letters?.length ? { letters } : {})
+            ...(pendingLetters.length ? { letters: pendingLetters } : {})
           }
           window.postMessage(response, event.origin)
+
+          if (cache.claims.length || cache.appeals.length) {
+            void buildDecisionLetterUploadsForTrack({
+              claims: cache.claims,
+              appeals: cache.appeals
+            }).then((fresh) => {
+              if (fresh.length) void savePendingTrackLetters(fresh)
+            }).catch(() => {
+              /* letters can sync on a later ClaimBuilder refresh */
+            })
+          }
         })()
         return
       }

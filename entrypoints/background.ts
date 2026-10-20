@@ -1,7 +1,9 @@
 import {
-  VCH_PROBE_VA_SESSION
+  VCH_PROBE_VA_SESSION,
+  VCH_PROBE_VA_TRACK_CACHE
 } from '@/shared/claimBuilderBridge'
 import { probeVaSession } from '@/shared/connectionStatus'
+import { readVaTrackBridgeCachePayload } from '@/shared/vaTrackBridgeCache'
 import { hubUrl, VCH_EXTENSION_HUB_PATH } from '@/shared/urls'
 
 export default defineBackground(() => {
@@ -23,6 +25,23 @@ export default defineBackground(() => {
           sendResponse(await probeVaSession())
         } catch {
           sendResponse({ connected: false, label: 'Sign in to VA.gov' })
+        }
+      })()
+      return true
+    }
+
+    if (message?.type === VCH_PROBE_VA_TRACK_CACHE) {
+      void (async () => {
+        try {
+          sendResponse(await readVaTrackBridgeCachePayload())
+        } catch {
+          sendResponse({
+            ok: true,
+            claims: [],
+            appeals: [],
+            deviceLastSyncedAt: null,
+            vaLabel: null
+          })
         }
       })()
       return true
