@@ -44,6 +44,16 @@ export default defineConfig({
           colors: {
             primary: 'brass',
             neutral: 'slate'
+          },
+          button: {
+            slots: {
+              base: 'cursor-pointer'
+            }
+          },
+          tabs: {
+            slots: {
+              trigger: 'cursor-pointer'
+            }
           }
         }
       })
