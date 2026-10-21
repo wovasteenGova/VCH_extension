@@ -16,6 +16,7 @@
 }
 
 :root {
+  --popup-width: 34rem;
   --scrollbar-size: 8px;
   --scrollbar-track: transparent;
   --scrollbar-thumb: rgb(196 160 92 / 0.28);
@@ -26,11 +27,11 @@ html,
 body,
 #app {
   box-sizing: border-box;
-  width: 27rem;
+  width: var(--popup-width);
   height: 600px;
-  max-width: 27rem;
+  max-width: var(--popup-width);
   max-height: 600px;
-  min-width: 27rem;
+  min-width: var(--popup-width);
   margin: 0;
   overflow: hidden;
 }

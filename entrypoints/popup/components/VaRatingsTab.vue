@@ -627,10 +627,10 @@ onUnmounted(() => {
                 <UIcon name="i-lucide-cloud-check" class="size-4 text-primary" />
               </span>
               <div class="min-w-0">
-                <p class="font-medium text-xs text-highlighted">
+                <p class="font-medium text-sm text-highlighted">
                   Synced with your VCH account
                 </p>
-                <p v-if="claimBuilderSyncedAt" class="truncate text-[0.65rem] text-muted">
+                <p v-if="claimBuilderSyncedAt" class="truncate text-xs text-muted">
                   Last populated {{ formatVaDate(claimBuilderSyncedAt) }}
                 </p>
               </div>
@@ -649,12 +649,12 @@ onUnmounted(() => {
           v-else-if="showClaimBuilderImportPanel"
           class="space-y-3 rounded-lg border border-default bg-elevated/30 p-3"
         >
-          <div class="space-y-1">
-            <p class="font-medium text-sm text-highlighted">
+          <div class="space-y-1.5">
+            <p class="text-base font-semibold leading-snug text-highlighted">
               Save VA data to your VCH account
             </p>
-            <p class="text-muted text-[0.65rem] leading-relaxed">
-              With your approval, VCH sends the items below to your signed-in Veterans Central Hub account. Data is stored securely and used to pre-fill ClaimBuilder project settings, Hub entitlements guidance, and related benefits tools. The benefits calculator still asks before applying your rating.
+            <p class="text-sm leading-relaxed text-muted">
+              With your approval, this extension sends the items below to your signed-in Veterans Central Hub account. Data is stored securely and used to pre-fill ClaimBuilder, Hub entitlements guidance, and related benefits tools. The benefits calculator still asks before applying your rating.
             </p>
           </div>
 
@@ -667,7 +667,7 @@ onUnmounted(() => {
               class="flex w-full items-center justify-between gap-2 text-left"
               @click="importPreviewExpanded = !importPreviewExpanded"
             >
-              <span class="font-medium text-[0.65rem] text-highlighted">
+              <span class="text-sm font-medium text-highlighted">
                 Will send to your VCH account
                 <span class="font-normal text-muted">({{ importPreviewItems.length }})</span>
               </span>
@@ -681,13 +681,13 @@ onUnmounted(() => {
                 <li
                   v-for="item in importPreviewItems"
                   :key="item.id"
-                  class="text-[0.65rem] leading-snug text-muted"
+                  class="text-xs leading-snug text-muted"
                 >
                   <span class="font-medium text-highlighted">{{ item.label }}</span>
                   <span v-if="item.detail">: {{ item.detail }}</span>
                 </li>
               </ul>
-              <p class="text-[0.6rem] leading-relaxed text-muted">
+              <p class="text-xs leading-relaxed text-muted">
                 Matching claim names also get their current VA % updated for Increase filing. VCH does not send your VA password or home address. If VA provides an SSN, only the last four digits are sent.
               </p>
             </div>
@@ -695,7 +695,7 @@ onUnmounted(() => {
 
           <p
             v-else-if="hasRatingsData && !hasProfilePreviewData"
-            class="rounded-md border border-dashed border-warning/40 bg-warning/5 px-2.5 py-2 text-[0.65rem] leading-relaxed text-muted"
+            class="rounded-md border border-dashed border-warning/40 bg-warning/5 px-2.5 py-2 text-xs leading-relaxed text-muted"
           >
             Name, DOB, phone, and service history need a live VA.gov sign-in. Open VA.gov in this browser, then tap refresh above.
           </p>
@@ -704,9 +704,9 @@ onUnmounted(() => {
             <input
               v-model="importConsent"
               type="checkbox"
-              class="mt-0.5 size-4 rounded border-default accent-primary"
+              class="mt-1 size-4 rounded border-default accent-primary"
             >
-            <span class="text-[0.65rem] leading-relaxed text-muted">
+            <span class="text-sm leading-relaxed text-muted">
               I approve sending the data listed above to my signed-in VCH account.
             </span>
           </label>
@@ -717,19 +717,19 @@ onUnmounted(() => {
           >
             <p
               v-if="importSuccess"
-              class="rounded-md border border-primary/30 bg-primary/10 px-2.5 py-2 text-xs leading-relaxed text-primary"
+              class="rounded-md border border-primary/30 bg-primary/10 px-2.5 py-2 text-sm leading-relaxed text-primary"
             >
               {{ importSuccess }}
             </p>
             <p
               v-if="importError"
-              class="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-xs leading-relaxed text-red-500"
+              class="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-sm leading-relaxed text-red-500"
             >
               {{ importError }}
             </p>
             <p
               v-if="!hubCanImport && !importError"
-              class="rounded-md border border-warning/30 bg-warning/10 px-2.5 py-2 text-xs leading-relaxed text-warning"
+              class="rounded-md border border-warning/30 bg-warning/10 px-2.5 py-2 text-sm leading-relaxed text-warning"
             >
               Sign in at veteranscentralhub.com in this browser to save this data to your account.
             </p>
@@ -738,7 +738,7 @@ onUnmounted(() => {
           <div class="flex flex-col gap-2">
             <UButton
               block
-              size="sm"
+              size="md"
               color="primary"
               leading-icon="i-lucide-cloud-upload"
               :disabled="!importConsent || !hubCanImport"
