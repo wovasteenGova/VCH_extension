@@ -22,7 +22,7 @@ const tabs = [
 
 <template>
   <UApp class="popup-app">
-    <div class="popup-shell grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-1.5 overflow-hidden p-3 pb-2">
+    <div class="popup-shell grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-1.5 p-3 pb-2">
       <div
         v-if="footerPanelOpen"
         class="popup-footer-backdrop absolute inset-0 z-[15] bg-black/60"
@@ -30,7 +30,7 @@ const tabs = [
         @click="footerPanelOpen = false"
       />
 
-      <div class="popup-chrome relative z-0 min-h-0 space-y-2">
+      <div class="popup-chrome relative z-30 min-h-0 space-y-2 overflow-visible">
         <header class="flex flex-col gap-1.5">
           <div class="flex items-start gap-3">
             <img
