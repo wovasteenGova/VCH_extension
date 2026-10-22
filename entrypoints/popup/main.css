@@ -86,6 +86,31 @@ body,
   }
 }
 
+/* Nuxt UI slots often set cursor-default; keep the hand on real click targets */
+.popup-app :is(
+  button:not(:disabled):not([disabled]):not([aria-disabled='true']),
+  [role='tab']:not([aria-disabled='true']):not([data-disabled]),
+  [role='button']:not([aria-disabled='true']),
+  a[href],
+  summary,
+  label:has(input[type='checkbox']:not(:disabled)),
+  label:has(input[type='radio']:not(:disabled)),
+  .popup-footer-backdrop,
+  .popup-footer-link-panel button,
+  .popup-footer-nav button,
+  [data-clickable='true']
+) {
+  cursor: pointer !important;
+}
+
+.popup-app :is(
+  button:disabled,
+  [disabled],
+  [aria-disabled='true']
+) {
+  cursor: not-allowed !important;
+}
+
 .popup-app > div {
   height: 100%;
   min-height: 0;

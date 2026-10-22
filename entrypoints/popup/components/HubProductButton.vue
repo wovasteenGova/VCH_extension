@@ -14,7 +14,7 @@ const emit = defineEmits<{
 <template>
   <button
     type="button"
-    class="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition"
+    class="flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition"
     :class="primary
       ? 'border-primary/40 bg-primary text-primary-foreground hover:bg-primary/90'
       : 'border-default bg-elevated/40 hover:bg-elevated'"

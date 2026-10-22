@@ -110,7 +110,7 @@ function openLink(url: string) {
 </script>
 
 <template>
-  <div ref="navRef" class="relative z-30 flex w-full flex-col">
+  <div ref="navRef" class="popup-footer-nav relative z-30 flex w-full flex-col">
     <div
       v-if="activePanel"
       ref="listRef"

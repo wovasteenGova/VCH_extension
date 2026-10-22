@@ -7,6 +7,7 @@ import HubTab from './components/HubTab.vue'
 import PopupFooterNav from './components/PopupFooterNav.vue'
 import ConnectionStatusBar from './components/ConnectionStatusBar.vue'
 import PopupUiScaleControl from './components/PopupUiScaleControl.vue'
+import PopupThemeToggle from './components/PopupThemeToggle.vue'
 
 const activeTab = ref('claims')
 const footerPanelOpen = ref(false)
@@ -38,9 +39,12 @@ const tabs = [
               class="size-10 shrink-0 rounded-lg object-contain"
             >
             <div class="min-w-0 flex-1">
-              <p class="font-semibold text-highlighted">
-                VCH Web Extension
-              </p>
+              <div class="flex items-center justify-between gap-2">
+                <p class="font-semibold text-highlighted">
+                  VCH Web Extension
+                </p>
+                <PopupThemeToggle />
+              </div>
               <p class="text-muted text-xs leading-snug">
                 VA.gov session data stays on your device
               </p>

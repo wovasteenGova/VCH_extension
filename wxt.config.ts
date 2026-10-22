@@ -40,6 +40,7 @@ export default defineConfig({
     plugins: [
       ui({
         router: false,
+        colorMode: true,
         ui: {
           colors: {
             primary: 'brass',
