@@ -6,6 +6,7 @@ import VaRatingsTab from './components/VaRatingsTab.vue'
 import HubTab from './components/HubTab.vue'
 import PopupFooterNav from './components/PopupFooterNav.vue'
 import ConnectionStatusBar from './components/ConnectionStatusBar.vue'
+import PopupUiScaleControl from './components/PopupUiScaleControl.vue'
 
 const activeTab = ref('claims')
 const footerPanelOpen = ref(false)
@@ -30,11 +31,11 @@ const tabs = [
 
       <div class="popup-chrome relative z-0 min-h-0 space-y-2">
         <header class="flex flex-col gap-1.5">
-          <div class="flex items-center gap-3">
+          <div class="flex items-start gap-3">
             <img
               src="/brand/vch-hub-logo.png"
               alt="Veterans Central Hub"
-              class="size-10 rounded-lg object-contain"
+              class="size-10 shrink-0 rounded-lg object-contain"
             >
             <div class="min-w-0 flex-1">
               <p class="font-semibold text-highlighted">
@@ -44,6 +45,7 @@ const tabs = [
                 VA.gov session data stays on your device
               </p>
             </div>
+            <PopupUiScaleControl />
           </div>
           <ConnectionStatusBar />
         </header>

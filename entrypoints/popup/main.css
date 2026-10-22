@@ -16,11 +16,16 @@
 }
 
 :root {
+  --popup-ui-scale: 1.0625;
   --popup-width: 34rem;
   --scrollbar-size: 8px;
   --scrollbar-track: transparent;
   --scrollbar-thumb: rgb(196 160 92 / 0.28);
   --scrollbar-thumb-hover: rgb(196 160 92 / 0.48);
+}
+
+html {
+  font-size: calc(100% * var(--popup-ui-scale));
 }
 
 html,
