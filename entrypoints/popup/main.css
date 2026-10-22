@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+@import "./claim-themes.css";
 
 @theme static {
   --color-brass-50: #faf7f0;
