@@ -122,25 +122,25 @@ function openLink(url: string) {
         v-for="(link, index) in activePanel.links"
         :key="link.id"
         type="button"
-        class="flex w-full items-start gap-2.5 rounded-lg border border-default bg-elevated/40 p-2.5 text-left transition hover:bg-elevated"
+        class="flex w-full items-start gap-2.5 rounded-lg border border-default bg-elevated/40 p-2.5 text-left text-sm transition hover:bg-elevated"
         @click="openLink(link.url)"
       >
         <span
-          class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border"
+          class="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border"
           :class="[footerLinkIconAccent(index).border, footerLinkIconAccent(index).bg]"
         >
           <UIcon
             :name="link.icon"
-            class="size-4"
+            class="size-5"
             :class="footerLinkIconAccent(index).icon"
           />
         </span>
         <span class="min-w-0 flex-1">
-          <span class="block font-medium text-xs text-highlighted">{{ link.label }}</span>
-          <span class="block text-muted text-[0.65rem] leading-snug">{{ link.description }}</span>
+          <span class="block font-semibold text-sm leading-snug text-highlighted">{{ link.label }}</span>
+          <span class="block text-xs leading-snug text-muted">{{ link.description }}</span>
           <span
             v-if="link.warning"
-            class="mt-1 block text-[0.65rem] leading-snug text-amber-400"
+            class="mt-1 block text-xs leading-snug text-amber-400"
           >
             {{ link.warning }}
           </span>
@@ -148,28 +148,28 @@ function openLink(url: string) {
       </button>
     </div>
 
-    <div class="grid w-full shrink-0 grid-cols-3 gap-1">
+    <div class="popup-footer-nav-labels grid w-full shrink-0 grid-cols-3 gap-1.5">
       <button
         v-for="panel in panels"
         :key="panel.id"
         type="button"
-        class="flex min-w-0 flex-col items-center gap-0.5 rounded-md px-0.5 py-1 transition hover:bg-elevated/60"
+        class="flex min-w-0 flex-col items-center gap-1 rounded-md px-0.5 py-1.5 transition hover:bg-elevated/60"
         :class="expandedPanel === panel.id ? 'bg-elevated/40' : ''"
         @click="togglePanel(panel.id as FooterPanelId)"
       >
         <span
-          class="flex size-6 shrink-0 items-center justify-center rounded-md border"
+          class="flex size-8 shrink-0 items-center justify-center rounded-md border"
           :class="[panel.accent.border, panel.accent.bg]"
         >
-          <UIcon :name="panel.icon" class="size-3.5" :class="panel.accent.icon" />
+          <UIcon :name="panel.icon" class="size-4" :class="panel.accent.icon" />
         </span>
-        <span class="flex min-w-0 items-center gap-0.5">
-          <span class="truncate font-medium text-[0.6rem] leading-tight text-highlighted">
+        <span class="flex min-w-0 items-center gap-0.5 px-0.5">
+          <span class="truncate text-center text-sm font-semibold leading-tight text-highlighted">
             {{ panel.title }}
           </span>
           <UIcon
             :name="expandedPanel === panel.id ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-            class="size-3 shrink-0 text-muted"
+            class="size-3.5 shrink-0 text-muted"
           />
         </span>
       </button>
