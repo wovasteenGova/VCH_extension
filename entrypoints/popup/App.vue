@@ -39,17 +39,17 @@ const tabs = [
               class="size-10 shrink-0 rounded-lg object-contain"
             >
             <div class="min-w-0 flex-1">
-              <div class="flex items-center justify-between gap-2">
-                <p class="font-semibold text-highlighted">
-                  VCH Web Extension
-                </p>
-                <PopupThemeToggle />
-              </div>
+              <p class="font-semibold text-highlighted">
+                VCH Web Extension
+              </p>
               <p class="text-muted text-xs leading-snug">
                 VA.gov session data stays on your device
               </p>
             </div>
-            <PopupUiScaleControl />
+            <div class="flex shrink-0 items-start gap-2">
+              <PopupThemeToggle />
+              <PopupUiScaleControl />
+            </div>
           </div>
           <ConnectionStatusBar />
         </header>

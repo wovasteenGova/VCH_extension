@@ -1,14 +1,23 @@
 <script setup lang="ts">
-import { onClickOutside } from '@vueuse/core'
+import { onClickOutside, useColorMode } from '@vueuse/core'
 import type { ClaimColorThemeId } from '@/shared/claimColorThemes'
 import { usePopupColorTheme } from '../composables/usePopupColorTheme'
 
-const colorMode = useColorMode()
-const isDark = computed(() => colorMode.value === 'dark')
 const pickerOpen = ref(false)
 const pickerRoot = ref<HTMLElement | null>(null)
 
-const { themeId, ready, activeTheme, themes, setTheme, hydrate } = usePopupColorTheme()
+const { themeId, activeTheme, themes, setTheme, hydrate } = usePopupColorTheme()
+
+const colorScheme = useColorMode({
+  storageKey: 'vch-extension-color-scheme',
+  attribute: 'class',
+  modes: {
+    light: 'light',
+    dark: 'dark'
+  }
+})
+
+const isDark = computed(() => colorScheme.value === 'dark')
 
 onMounted(() => {
   void hydrate()
@@ -22,6 +31,10 @@ function togglePicker() {
   pickerOpen.value = !pickerOpen.value
 }
 
+function toggleLightDark() {
+  colorScheme.value = isDark.value ? 'light' : 'dark'
+}
+
 async function selectTheme(id: ClaimColorThemeId) {
   await setTheme(id)
   pickerOpen.value = false
@@ -29,7 +42,8 @@ async function selectTheme(id: ClaimColorThemeId) {
 </script>
 
 <template>
-  <div v-if="ready" ref="pickerRoot" class="relative z-40 shrink-0">
+  <div ref="pickerRoot" class="relative z-50 flex shrink-0 flex-col items-end gap-0.5">
+    <span class="text-[0.6rem] font-medium uppercase tracking-wide text-muted">Theme</span>
     <div class="flex items-center gap-1">
       <button
         type="button"
@@ -46,18 +60,20 @@ async function selectTheme(id: ClaimColorThemeId) {
         />
       </button>
 
-      <UColorModeButton
-        size="xs"
-        color="neutral"
-        variant="ghost"
-        class="shrink-0"
+      <button
+        type="button"
+        class="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-default/80 bg-elevated/40 text-muted transition hover:border-primary/40 hover:bg-elevated/70 hover:text-highlighted"
         :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
-      />
+        :title="isDark ? 'Light mode' : 'Dark mode'"
+        @click="toggleLightDark"
+      >
+        <UIcon :name="isDark ? 'i-lucide-sun' : 'i-lucide-moon'" class="size-4" />
+      </button>
     </div>
 
     <div
       v-if="pickerOpen"
-      class="absolute right-0 top-full z-[100] mt-1.5 w-[11.25rem] rounded-lg border border-default bg-default p-2 shadow-xl ring-1 ring-black/5"
+      class="absolute bottom-full right-0 z-[200] mb-1.5 w-[11.25rem] rounded-lg border border-default bg-default p-2 shadow-xl ring-1 ring-black/10"
       role="dialog"
       aria-label="Color theme"
     >

@@ -7,14 +7,12 @@ import {
 import { readPopupColorTheme, writePopupColorTheme } from '@/shared/popupColorTheme'
 
 const themeId = ref<ClaimColorThemeId>(DEFAULT_CLAIM_COLOR_THEME)
-const ready = ref(false)
 
 export function usePopupColorTheme() {
   const activeTheme = computed(() => claimColorThemeById(themeId.value))
 
   async function hydrate() {
     themeId.value = await readPopupColorTheme()
-    ready.value = true
   }
 
   async function setTheme(next: ClaimColorThemeId) {
@@ -24,7 +22,6 @@ export function usePopupColorTheme() {
 
   return {
     themeId,
-    ready,
     activeTheme,
     themes: CLAIM_COLOR_THEMES,
     setTheme,
