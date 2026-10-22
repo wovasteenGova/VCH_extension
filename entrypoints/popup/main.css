@@ -49,21 +49,36 @@ body,
   overflow: hidden;
 }
 
-/* Tailwind preflight leaves buttons at cursor: default; show pointer on clickables */
-.popup-app :is(
-  button:not(:disabled):not([aria-disabled='true']),
-  [role='button']:not([aria-disabled='true']),
-  [role='tab']:not([aria-disabled='true']),
+/* Interactive cursors — Tailwind preflight sets buttons to default. */
+@layer base {
   a[href],
-  label:has(input[type='checkbox']:not(:disabled)),
-  label:has(input[type='radio']:not(:disabled)),
-  .popup-footer-backdrop
-) {
-  cursor: pointer;
-}
+  summary,
+  select:not(:disabled),
+  label:where(:not([aria-disabled='true'])):has(> input[type='checkbox']:not(:disabled)),
+  label:where(:not([aria-disabled='true'])):has(> input[type='radio']:not(:disabled)),
+  [data-clickable='true'],
+  [role='tab']:not([aria-disabled='true']),
+  .popup-footer-backdrop {
+    cursor: pointer;
+  }
 
-.popup-app :is(button:disabled, [aria-disabled='true']) {
-  cursor: not-allowed;
+  button:not(:disabled),
+  input[type='button']:not(:disabled),
+  input[type='submit']:not(:disabled),
+  input[type='reset']:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  input[type='button']:disabled,
+  input[type='submit']:disabled,
+  input[type='reset']:disabled,
+  select:disabled,
+  [role='button'][aria-disabled='true'],
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
 }
 
 .popup-app > div {
