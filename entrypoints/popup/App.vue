@@ -8,6 +8,7 @@ import PopupFooterNav from './components/PopupFooterNav.vue'
 import ConnectionStatusBar from './components/ConnectionStatusBar.vue'
 import PopupUiScaleControl from './components/PopupUiScaleControl.vue'
 import PopupThemeToggle from './components/PopupThemeToggle.vue'
+import PopupExpandControl from './components/PopupExpandControl.vue'
 
 const activeTab = ref('claims')
 const footerPanelOpen = ref(false)
@@ -46,7 +47,8 @@ const tabs = [
                 VA.gov session data stays on your device
               </p>
             </div>
-            <div class="flex shrink-0 items-start gap-2">
+            <div class="flex shrink-0 items-start gap-1.5">
+              <PopupExpandControl />
               <PopupThemeToggle />
               <PopupUiScaleControl />
             </div>
