@@ -14,8 +14,8 @@ async function expand() {
     <button
       type="button"
       class="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-default/80 bg-elevated/40 text-muted transition hover:border-primary/40 hover:bg-elevated/70 hover:text-highlighted"
-      title="Open a taller window"
-      aria-label="Open a taller window"
+      title="Open in a resizable window"
+      aria-label="Open in a resizable window"
       @click="expand"
     >
       <UIcon name="i-lucide-maximize-2" class="size-4" />

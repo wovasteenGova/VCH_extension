@@ -1,7 +1,7 @@
 /** Chrome toolbar action popup max (CSS px). */
 export const POPUP_TOOLBAR_HEIGHT_PX = 600
 
-/** Taller detached popup window (browser window, not toolbar clamp). */
+/** Initial size for the detached window; layout uses 100dvh/100% so users can resize freely. */
 export const POPUP_EXPANDED_HEIGHT_PX = 760
 export const POPUP_EXPANDED_WIDTH_PX = 572
 
