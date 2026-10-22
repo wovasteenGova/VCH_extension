@@ -73,7 +73,7 @@ async function selectTheme(id: ClaimColorThemeId) {
 
     <div
       v-if="pickerOpen"
-      class="absolute bottom-full right-0 z-[200] mb-1.5 w-[11.25rem] rounded-lg border border-default bg-default p-2 shadow-xl ring-1 ring-black/10"
+      class="absolute right-0 top-full z-[300] mt-1.5 w-[11.25rem] rounded-lg border border-default bg-default p-2 shadow-xl ring-1 ring-black/10"
       role="dialog"
       aria-label="Color theme"
     >

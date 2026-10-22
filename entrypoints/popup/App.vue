@@ -31,7 +31,7 @@ const tabs = [
         @click="footerPanelOpen = false"
       />
 
-      <div class="popup-chrome relative z-30 min-h-0 space-y-2 overflow-visible">
+      <div class="popup-chrome relative z-30 min-h-0 space-y-2 overflow-visible pb-0.5">
         <header class="flex flex-col gap-1.5">
           <div class="flex items-start gap-3">
             <img
