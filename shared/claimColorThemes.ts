@@ -51,7 +51,7 @@ export const CLAIM_COLOR_THEMES: ClaimColorThemeOption[] = [
   }
 ]
 
-export const DEFAULT_CLAIM_COLOR_THEME: ClaimColorThemeId = 'classic-warm'
+export const DEFAULT_CLAIM_COLOR_THEME: ClaimColorThemeId = 'pacific-slate'
 
 export function isClaimColorThemeId(value: string | null | undefined): value is ClaimColorThemeId {
   return Boolean(value && (CLAIM_COLOR_THEME_IDS as readonly string[]).includes(value))

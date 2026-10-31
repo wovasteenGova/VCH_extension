@@ -7,7 +7,7 @@ html[data-theme='classic-warm'] {
   color-scheme: light;
   --ui-primary: var(--ui-color-primary-600);
   --ui-secondary: var(--ui-color-secondary-600);
-  --ui-success: var(--ui-color-primary-600);
+  --ui-success: var(--ui-color-success-600);
   --ui-info: var(--ui-color-info-600);
   --ui-warning: var(--ui-color-warning-600);
   --ui-error: var(--ui-color-error-600);
@@ -32,7 +32,7 @@ html.dark[data-theme='classic-warm'] {
   color-scheme: dark;
   --ui-primary: var(--ui-color-primary-400);
   --ui-secondary: var(--ui-color-secondary-400);
-  --ui-success: var(--ui-color-primary-400);
+  --ui-success: var(--ui-color-success-400);
   --ui-info: var(--ui-color-info-400);
   --ui-warning: var(--ui-color-warning-400);
   --ui-error: var(--ui-color-error-400);
@@ -57,7 +57,7 @@ html[data-theme='service-blue'] {
   color-scheme: light;
   --ui-primary: #2c5282;
   --ui-secondary: #4a5568;
-  --ui-success: var(--ui-color-primary-600);
+  --ui-success: var(--ui-color-success-600);
   --ui-info: #3182ce;
   --ui-warning: var(--ui-color-warning-600);
   --ui-error: var(--ui-color-error-600);
@@ -82,7 +82,7 @@ html.dark[data-theme='service-blue'] {
   color-scheme: dark;
   --ui-primary: #63b3ed;
   --ui-secondary: #90cdf4;
-  --ui-success: var(--ui-color-primary-400);
+  --ui-success: var(--ui-color-success-400);
   --ui-info: #90cdf4;
   --ui-warning: var(--ui-color-warning-400);
   --ui-error: var(--ui-color-error-400);
@@ -107,7 +107,7 @@ html[data-theme='field-manual'] {
   color-scheme: light;
   --ui-primary: #556b2f;
   --ui-secondary: #6b705c;
-  --ui-success: var(--ui-color-primary-600);
+  --ui-success: var(--ui-color-success-600);
   --ui-info: var(--ui-color-info-600);
   --ui-warning: var(--ui-color-warning-600);
   --ui-error: var(--ui-color-error-600);
@@ -132,7 +132,7 @@ html.dark[data-theme='field-manual'] {
   color-scheme: dark;
   --ui-primary: #9caf6e;
   --ui-secondary: #b5c48a;
-  --ui-success: var(--ui-color-primary-400);
+  --ui-success: var(--ui-color-success-400);
   --ui-info: var(--ui-color-info-400);
   --ui-warning: var(--ui-color-warning-400);
   --ui-error: var(--ui-color-error-400);
@@ -157,7 +157,7 @@ html[data-theme='pacific-slate'] {
   color-scheme: light;
   --ui-primary: #475569;
   --ui-secondary: #64748b;
-  --ui-success: var(--ui-color-primary-600);
+  --ui-success: var(--ui-color-success-600);
   --ui-info: var(--ui-color-info-600);
   --ui-warning: var(--ui-color-warning-600);
   --ui-error: var(--ui-color-error-600);
@@ -182,7 +182,7 @@ html.dark[data-theme='pacific-slate'] {
   color-scheme: dark;
   --ui-primary: #94a3b8;
   --ui-secondary: #cbd5e1;
-  --ui-success: var(--ui-color-primary-400);
+  --ui-success: var(--ui-color-success-400);
   --ui-info: var(--ui-color-info-400);
   --ui-warning: var(--ui-color-warning-400);
   --ui-error: var(--ui-color-error-400);
@@ -207,7 +207,7 @@ html[data-theme='night-ops'] {
   color-scheme: light;
   --ui-primary: #946b35;
   --ui-secondary: #64748b;
-  --ui-success: var(--ui-color-primary-600);
+  --ui-success: var(--ui-color-success-600);
   --ui-info: var(--ui-color-info-600);
   --ui-warning: var(--ui-color-warning-600);
   --ui-error: var(--ui-color-error-600);
@@ -232,7 +232,7 @@ html.dark[data-theme='night-ops'] {
   color-scheme: dark;
   --ui-primary: #c4a05c;
   --ui-secondary: #d4bc85;
-  --ui-success: var(--ui-color-primary-400);
+  --ui-success: var(--ui-color-success-400);
   --ui-info: var(--ui-color-info-400);
   --ui-warning: var(--ui-color-warning-400);
   --ui-error: var(--ui-color-error-400);
@@ -257,7 +257,7 @@ html[data-theme='high-contrast'] {
   color-scheme: light;
   --ui-primary: #005fcc;
   --ui-secondary: #1a1a1a;
-  --ui-success: var(--ui-color-primary-600);
+  --ui-success: #047857;
   --ui-info: #005fcc;
   --ui-warning: #b45309;
   --ui-error: #b91c1c;
@@ -282,7 +282,7 @@ html.dark[data-theme='high-contrast'] {
   color-scheme: dark;
   --ui-primary: #6eb6ff;
   --ui-secondary: #ffffff;
-  --ui-success: var(--ui-color-primary-400);
+  --ui-success: #34d399;
   --ui-info: #6eb6ff;
   --ui-warning: #fbbf24;
   --ui-error: #f87171;
@@ -303,39 +303,41 @@ html.dark[data-theme='high-contrast'] {
   --scrollbar-thumb-hover: rgb(255 255 255 / 0.65);
 }
 
-/* Fallback before client theme plugin runs */
+/* Fallback before client theme plugin runs (Pacific Slate) */
 html:not([data-theme]) {
   color-scheme: light;
-  --ui-primary: var(--ui-color-primary-600);
-  --ui-bg: #f7f4ef;
-  --ui-bg-muted: #efe9df;
-  --ui-bg-elevated: #faf8f4;
-  --ui-bg-accented: #e8e0d4;
-  --ui-bg-inverted: #131110;
-  --ui-border: #d9cfc2;
-  --ui-border-muted: #e5ddd2;
-  --ui-border-accented: #c9bba8;
-  --ui-text-dimmed: #8a8074;
-  --ui-text-muted: #6b6258;
-  --ui-text-toned: #4a433c;
-  --ui-text: #2f2a24;
-  --ui-text-highlighted: #1a1612;
+  --ui-primary: #475569;
+  --ui-secondary: #64748b;
+  --ui-bg: #f8fafc;
+  --ui-bg-muted: #f1f5f9;
+  --ui-bg-elevated: #ffffff;
+  --ui-bg-accented: #e2e8f0;
+  --ui-bg-inverted: #0f172a;
+  --ui-border: #cbd5e1;
+  --ui-border-muted: #e2e8f0;
+  --ui-border-accented: #94a3b8;
+  --ui-text-dimmed: #64748b;
+  --ui-text-muted: #475569;
+  --ui-text-toned: #334155;
+  --ui-text: #1e293b;
+  --ui-text-highlighted: #0f172a;
 }
 
 html.dark:not([data-theme]) {
   color-scheme: dark;
-  --ui-primary: var(--ui-color-primary-400);
-  --ui-bg: #131110;
-  --ui-bg-muted: #1a1714;
-  --ui-bg-elevated: #211d19;
-  --ui-bg-accented: #2a2520;
-  --ui-bg-inverted: #f2ead8;
-  --ui-border: #3a342e;
-  --ui-border-muted: #322c27;
-  --ui-border-accented: #453d36;
-  --ui-text-dimmed: #7a7168;
-  --ui-text-muted: #a69d92;
-  --ui-text-toned: #c4bab0;
-  --ui-text: #e8e0d6;
-  --ui-text-highlighted: #faf7f0;
+  --ui-primary: #94a3b8;
+  --ui-secondary: #cbd5e1;
+  --ui-bg: #0f172a;
+  --ui-bg-muted: #1e293b;
+  --ui-bg-elevated: #243044;
+  --ui-bg-accented: #334155;
+  --ui-bg-inverted: #f8fafc;
+  --ui-border: #334155;
+  --ui-border-muted: #1e293b;
+  --ui-border-accented: #475569;
+  --ui-text-dimmed: #64748b;
+  --ui-text-muted: #94a3b8;
+  --ui-text-toned: #cbd5e1;
+  --ui-text: #e2e8f0;
+  --ui-text-highlighted: #f8fafc;
 }
