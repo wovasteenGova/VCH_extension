@@ -28,6 +28,8 @@ import { hasOpenVaGovTab } from '@/shared/vaGovTabFetch'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
 
 const loading = ref(false)
+/** True until first bootstrap finishes (cache + optional VA fetch); avoids empty-state flash while data loads. */
+const claimsBootstrapPending = ref(true)
 const error = ref<string | null>(null)
 const isStale = ref(false)
 const lastSyncedAt = ref<string | null>(null)
@@ -67,7 +69,8 @@ async function hydrateClaimsFromDevice() {
 
 const showSignInWall = computed(() =>
   Boolean(
-    error.value
+    !claimsBootstrapPending.value
+    && error.value
     && !claims.value.length
     && !isStale.value
     && !hasClaimsCache.value
@@ -76,11 +79,13 @@ const showSignInWall = computed(() =>
 )
 
 const showClaimsNotSyncedInfo = computed(() =>
-  !claims.value.length && !isStale.value && !hasClaimsCache.value && hasOtherVaCache.value
+  !claimsBootstrapPending.value
+    && !claims.value.length && !isStale.value && !hasClaimsCache.value && hasOtherVaCache.value
 )
 
 const showCachedClaimsRestoreHint = computed(() =>
-  hasClaimsCache.value && !claims.value.length && !isStale.value
+  !claimsBootstrapPending.value
+    && hasClaimsCache.value && !claims.value.length && !isStale.value
 )
 
 const claimsErrorDescription = computed(() => {
@@ -182,31 +187,45 @@ async function loadClaims() {
 }
 
 async function bootstrapClaims() {
-  if (!props.deferNetworkBootstrap) {
-    const session = await probeVaSession()
-    vaLiveSession.value = session.connected
-  }
-  await refreshDeviceCacheMeta()
-  const restored = await hydrateClaimsFromDevice()
-  if (restored) {
-    error.value = null
-    markCacheFreshIfPossible()
-    if (!vaLiveSession.value && !vaGovTabOpen.value && !isRecentVaDeviceSync(lastSyncedAt.value)) {
-      isStale.value = true
-    }
-  }
-  if (props.deferNetworkBootstrap) {
-    if (!claims.value.length) {
-      await restoreClaimsFromDevice()
-    }
+  claimsBootstrapPending.value = true
+  try {
+    // Show saved claims from storage immediately, then refresh from VA.gov in the background.
     await refreshDeviceCacheMeta()
-    return
+
+    const vaProbe = !props.deferNetworkBootstrap
+      ? probeVaSession().then((session) => {
+          vaLiveSession.value = session.connected
+        })
+      : Promise.resolve()
+
+    const restored = await hydrateClaimsFromDevice()
+    await vaProbe
+
+    if (restored) {
+      error.value = null
+      markCacheFreshIfPossible()
+      if (!vaLiveSession.value && !vaGovTabOpen.value && !isRecentVaDeviceSync(lastSyncedAt.value)) {
+        isStale.value = true
+      }
+    }
+
+    if (props.deferNetworkBootstrap) {
+      if (!claims.value.length) {
+        await restoreClaimsFromDevice()
+      }
+      await refreshDeviceCacheMeta()
+      return
+    }
+
+    void loadClaims().then(async () => {
+      if (!claims.value.length) {
+        await restoreClaimsFromDevice()
+      }
+      await refreshDeviceCacheMeta()
+    })
+  } finally {
+    claimsBootstrapPending.value = false
   }
-  await loadClaims()
-  if (!claims.value.length) {
-    await restoreClaimsFromDevice()
-  }
-  await refreshDeviceCacheMeta()
 }
 
 function openTrackOnVch() {
@@ -323,7 +342,7 @@ function openVaClaims() {
       :description="claimsNotSyncedDescription"
     >
       <template #actions>
-        <UButton size="xs" color="primary" variant="soft" label="Open claims page" @click="openVaClaims" />
+        <UButton size="sm" color="primary" variant="soft" label="Open claims page" @click="openVaClaims" />
       </template>
     </UAlert>
 
@@ -336,13 +355,22 @@ function openVaClaims() {
       :description="claimsErrorDescription"
     >
       <template #actions>
-        <UButton size="xs" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />
-        <UButton size="xs" color="primary" variant="soft" label="Open claims page" @click="openVaClaims" />
+        <UButton size="sm" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />
+        <UButton size="sm" color="primary" variant="soft" label="Open claims page" @click="openVaClaims" />
       </template>
     </UAlert>
 
-    <div v-if="loading && !claims.length" class="flex items-center justify-center py-12">
-      <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-primary" />
+    <div
+      v-if="(loading || claimsBootstrapPending) && !claims.length"
+      class="flex min-h-[8rem] flex-col items-center justify-center gap-2 py-10"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <UIcon name="i-lucide-loader-circle" class="size-7 animate-spin text-primary" />
+      <p class="text-center text-xs text-muted">
+        Loading saved claims…
+      </p>
     </div>
 
     <div
@@ -352,7 +380,7 @@ function openVaClaims() {
       <p class="text-muted text-sm">
         No claims returned. If you have open claims, sign in at VA.gov and visit your claims list first.
       </p>
-      <UButton block size="sm" color="primary" label="Open VA.gov claims" @click="openVaClaims" />
+      <UButton block size="md" color="primary" label="Open VA.gov claims" @click="openVaClaims" />
     </div>
 
     <ul v-if="claims.length" class="space-y-2">

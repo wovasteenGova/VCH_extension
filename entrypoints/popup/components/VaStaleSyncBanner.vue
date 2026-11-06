@@ -36,7 +36,7 @@ defineEmits<{
   >
     <template #actions>
       <UButton
-        size="xs"
+        size="sm"
         color="neutral"
         variant="outline"
         label="Sign in to VA.gov"

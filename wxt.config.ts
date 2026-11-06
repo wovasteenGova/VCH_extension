@@ -17,7 +17,9 @@ export default defineConfig({
       'https://*.veteranscentralhub.com/*',
       'https://veteranscentralhub.us/*',
       'https://*.veteranscentralhub.us/*',
-      'https://claimbuilder.veteranscentralhub.com/*'
+      'https://claimbuilder.veteranscentralhub.com/*',
+      'https://extension.veteranscentralhub.com/*',
+      'https://www.extension.veteranscentralhub.com/*'
     ],
     action: {
       default_title: 'VCH Web Extension'
@@ -29,7 +31,11 @@ export default defineConfig({
         'https://www.veteranscentralhub.com/*',
         'https://veteranscentralhub.us/*',
         'https://www.veteranscentralhub.us/*',
-        'https://claimbuilder.veteranscentralhub.com/*'
+        'https://claimbuilder.veteranscentralhub.com/*',
+        'https://extension.veteranscentralhub.com/*',
+        'https://www.extension.veteranscentralhub.com/*',
+        'https://extension.veteranscentralhub.us/*',
+        'https://www.extension.veteranscentralhub.us/*'
       ]
     }
   },

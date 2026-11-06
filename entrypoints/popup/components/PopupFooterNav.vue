@@ -14,6 +14,7 @@ const panelOpen = defineModel<boolean>('open', { default: false })
 const expandedPanel = ref<FooterPanelId | null>(null)
 const navRef = ref<HTMLElement | null>(null)
 const listRef = ref<HTMLElement | null>(null)
+const listBodyRef = ref<HTMLElement | null>(null)
 const listMaxHeight = ref<number | null>(null)
 const listScrollable = ref(false)
 
@@ -53,6 +54,15 @@ function closePanel() {
   expandedPanel.value = null
 }
 
+function updateListScrollableFlag() {
+  const body = listBodyRef.value
+  if (!body) {
+    listScrollable.value = false
+    return
+  }
+  listScrollable.value = body.scrollHeight > body.clientHeight + 1
+}
+
 function measureListSpace() {
   if (!expandedPanel.value || !listRef.value || !navRef.value) {
     listMaxHeight.value = null
@@ -69,17 +79,14 @@ function measureListSpace() {
   const footerTop = footer.getBoundingClientRect().top
   const disclaimer = footer.querySelector('.popup-disclaimer') as HTMLElement | null
   const disclaimerHeight = disclaimer?.offsetHeight ?? 0
-  const available = Math.floor(footerTop - chromeBottom - 12 - disclaimerHeight)
-  const naturalHeight = listRef.value.scrollHeight
+  const availableForPanel = Math.floor(footerTop - chromeBottom - 12 - disclaimerHeight)
 
-  if (available < 80) {
-    listMaxHeight.value = 80
-    listScrollable.value = true
-    return
-  }
+  // Cap the whole panel (header + list); inner flex column handles list scrolling.
+  listMaxHeight.value = Math.max(88, availableForPanel)
 
-  listMaxHeight.value = Math.min(naturalHeight, available)
-  listScrollable.value = naturalHeight > available
+  void nextTick(() => {
+    updateListScrollableFlag()
+  })
 }
 
 watch(expandedPanel, async (panelId) => {
@@ -99,8 +106,27 @@ watch(panelOpen, (isOpen) => {
   if (!isOpen) expandedPanel.value = null
 })
 
+function onKeydownEscape(e: KeyboardEvent) {
+  if (e.key === 'Escape' && expandedPanel.value) {
+    e.preventDefault()
+    closePanel()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKeydownEscape)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydownEscape)
+})
+
 useResizeObserver(navRef, () => {
   if (expandedPanel.value) measureListSpace()
+})
+
+useResizeObserver(listBodyRef, () => {
+  if (expandedPanel.value) updateListScrollableFlag()
 })
 
 function openLink(url: string) {
@@ -114,38 +140,61 @@ function openLink(url: string) {
     <div
       v-if="activePanel"
       ref="listRef"
-      class="popup-footer-link-panel absolute bottom-full left-0 right-0 z-30 mb-1.5 w-full space-y-1.5 overflow-y-auto overscroll-contain rounded-lg border border-default bg-default p-1.5 shadow-lg"
-      :class="listScrollable ? 'custom-scrollbar' : 'no-scrollbar'"
+      class="popup-footer-link-panel absolute bottom-full left-0 right-0 z-30 mb-1.5 flex w-full flex-col gap-2 overflow-hidden rounded-lg border border-default bg-default p-2 shadow-lg"
+      role="dialog"
+      :aria-label="activePanel.title"
       :style="listMaxHeight != null ? { maxHeight: `${listMaxHeight}px` } : undefined"
+      @click.stop
     >
-      <button
-        v-for="(link, index) in activePanel.links"
-        :key="link.id"
-        type="button"
-        class="flex w-full items-start gap-2.5 rounded-lg border border-default bg-elevated/40 p-2.5 text-left text-sm transition hover:bg-elevated"
-        @click="openLink(link.url)"
+      <div class="flex shrink-0 items-start justify-between gap-2 border-b border-default/60 pb-2">
+        <p class="min-w-0 flex-1 pt-0.5 text-sm font-semibold leading-snug text-highlighted">
+          {{ activePanel.title }}
+        </p>
+        <UButton
+          type="button"
+          size="sm"
+          color="error"
+          variant="soft"
+          class="shrink-0 ring-1 ring-inset ring-red-500/35"
+          icon="i-lucide-x"
+          aria-label="Close"
+          @click="closePanel"
+        />
+      </div>
+      <div
+        ref="listBodyRef"
+        class="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain"
+        :class="listScrollable ? 'custom-scrollbar' : 'no-scrollbar'"
       >
-        <span
-          class="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border"
-          :class="[footerLinkIconAccent(index).border, footerLinkIconAccent(index).bg]"
+        <button
+          v-for="(link, index) in activePanel.links"
+          :key="link.id"
+          type="button"
+          class="flex w-full min-h-[3.25rem] items-start gap-3 rounded-lg border border-default bg-elevated/40 px-3 py-3 text-left text-base transition hover:bg-elevated"
+          @click="openLink(link.url)"
         >
-          <UIcon
-            :name="link.icon"
-            class="size-5"
-            :class="footerLinkIconAccent(index).icon"
-          />
-        </span>
-        <span class="min-w-0 flex-1">
-          <span class="block font-semibold text-sm leading-snug text-highlighted">{{ link.label }}</span>
-          <span class="block text-xs leading-snug text-muted">{{ link.description }}</span>
           <span
-            v-if="link.warning"
-            class="mt-1 block text-xs leading-snug text-amber-400"
+            class="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-md border"
+            :class="[footerLinkIconAccent(index).border, footerLinkIconAccent(index).bg]"
           >
-            {{ link.warning }}
+            <UIcon
+              :name="link.icon"
+              class="size-5"
+              :class="footerLinkIconAccent(index).icon"
+            />
           </span>
-        </span>
-      </button>
+          <span class="min-w-0 flex-1">
+            <span class="block font-semibold text-base leading-snug text-highlighted">{{ link.label }}</span>
+            <span class="block text-sm leading-snug text-muted">{{ link.description }}</span>
+            <span
+              v-if="link.warning"
+              class="mt-1 block text-xs leading-snug text-amber-400"
+            >
+              {{ link.warning }}
+            </span>
+          </span>
+        </button>
+      </div>
     </div>
 
     <div class="popup-footer-nav-labels grid w-full shrink-0 grid-cols-3 gap-1.5">
@@ -153,12 +202,12 @@ function openLink(url: string) {
         v-for="panel in panels"
         :key="panel.id"
         type="button"
-        class="flex min-w-0 flex-col items-center gap-1 rounded-md px-0.5 py-1.5 transition hover:bg-elevated/60"
+        class="flex min-h-[3.5rem] min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 transition hover:bg-elevated/60"
         :class="expandedPanel === panel.id ? 'bg-elevated/40' : ''"
         @click="togglePanel(panel.id as FooterPanelId)"
       >
         <span
-          class="flex size-8 shrink-0 items-center justify-center rounded-md border"
+          class="flex size-9 shrink-0 items-center justify-center rounded-md border"
           :class="[panel.accent.border, panel.accent.bg]"
         >
           <UIcon :name="panel.icon" class="size-4" :class="panel.accent.icon" />

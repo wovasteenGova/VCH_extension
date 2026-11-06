@@ -38,6 +38,8 @@ const {
 } = useRatingsPasskeyLock()
 
 const loading = ref(false)
+/** True while fetching from VA.gov in the background (refresh button); main list shows cache first. */
+const ratingsSyncing = ref(false)
 const error = ref<string | null>(null)
 const isStale = ref(false)
 const lastSyncedAt = ref<string | null>(null)
@@ -252,43 +254,58 @@ async function hydrateRatingsFromDevice() {
 async function loadRatings() {
   if (!unlocked.value) return
 
-  loading.value = true
   error.value = null
+  ratingsSyncing.value = true
+  loading.value = !hasRatingsData.value
 
-  const response = await fetchVaRatedDisabilities()
-  loading.value = false
-
-  if (!response.ok) {
-    const restored = await hydrateRatingsFromDevice()
-    hasCachedRatings.value = restored
-    if (restored || hasRatingsData.value) {
+  const hadDataBeforeFetch = hasRatingsData.value
+  if (!hadDataBeforeFetch) {
+    const hydrated = await hydrateRatingsFromDevice()
+    if (hydrated) {
+      hasCachedRatings.value = true
       isStale.value = !vaSession.value.connected
       error.value = null
-      return
     }
-    isStale.value = false
-    error.value = response.error
-    clearRatingsDisplay()
-    void refreshRatingsGate()
-    return
   }
 
-  const summary = parseVaRatingsResponse(response.data)
-  combinedRating.value = summary.combinedRating
-  combinedEffectiveDate.value = summary.combinedEffectiveDate
-  rows.value = sortRatingsByPercent(summary.ratings)
-  isStale.value = false
+  try {
+    const response = await fetchVaRatedDisabilities()
 
-  await saveVaRatingsCache({
-    combinedRating: combinedRating.value,
-    combinedEffectiveDate: combinedEffectiveDate.value,
-    rows: rows.value
-  })
-  hasCachedRatings.value = true
-  ratingsGate.value = { available: true, source: 'live' }
-  await persistLiveVaCaches()
-  const cache = await readVaDeviceCache()
-  lastSyncedAt.value = cache.lastSyncedAt
+    if (!response.ok) {
+      const restored = await hydrateRatingsFromDevice()
+      hasCachedRatings.value = restored
+      if (restored || hasRatingsData.value) {
+        isStale.value = !vaSession.value.connected
+        error.value = null
+        return
+      }
+      isStale.value = false
+      error.value = response.error
+      clearRatingsDisplay()
+      void refreshRatingsGate()
+      return
+    }
+
+    const summary = parseVaRatingsResponse(response.data)
+    combinedRating.value = summary.combinedRating
+    combinedEffectiveDate.value = summary.combinedEffectiveDate
+    rows.value = sortRatingsByPercent(summary.ratings)
+    isStale.value = false
+
+    await saveVaRatingsCache({
+      combinedRating: combinedRating.value,
+      combinedEffectiveDate: combinedEffectiveDate.value,
+      rows: rows.value
+    })
+    hasCachedRatings.value = true
+    ratingsGate.value = { available: true, source: 'live' }
+    await persistLiveVaCaches()
+    const cache = await readVaDeviceCache()
+    lastSyncedAt.value = cache.lastSyncedAt
+  } finally {
+    ratingsSyncing.value = false
+    loading.value = false
+  }
 }
 
 function openVaDisabilityRating() {
@@ -409,7 +426,7 @@ onUnmounted(() => {
           color="neutral"
           variant="ghost"
           icon="i-lucide-refresh-cw"
-          :loading="loading"
+          :loading="ratingsSyncing"
           aria-label="Refresh ratings"
           @click="refreshRatingsAndProfile"
         />
@@ -459,7 +476,7 @@ onUnmounted(() => {
         <UButton
           v-if="!ratingsGate.available && ratingsGate.reason === 'va_sign_in'"
           block
-          size="sm"
+          size="md"
           color="primary"
           label="Sign in to VA.gov"
           @click="openVaSignIn"
@@ -467,14 +484,14 @@ onUnmounted(() => {
         <UButton
           v-if="!ratingsGate.available && ratingsGate.reason === 'no_ratings'"
           block
-          size="sm"
+          size="md"
           color="primary"
           label="Open disability rating"
           @click="openVaDisabilityRating"
         />
         <UButton
           block
-          size="sm"
+          size="md"
           color="neutral"
           variant="outline"
           label="Check again"
@@ -510,7 +527,7 @@ onUnmounted(() => {
 
       <UButton
         block
-        size="sm"
+        size="md"
         color="primary"
         leading-icon="i-lucide-fingerprint"
         :loading="lockBusy"
@@ -545,8 +562,8 @@ onUnmounted(() => {
         description="Open your disability rating on VA.gov in this browser, then refresh here."
       >
         <template #actions>
-          <UButton size="xs" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />
-          <UButton size="xs" color="primary" variant="soft" label="Open disability rating" @click="openVaDisabilityRating" />
+          <UButton size="sm" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />
+          <UButton size="sm" color="primary" variant="soft" label="Open disability rating" @click="openVaDisabilityRating" />
         </template>
       </UAlert>
 
@@ -569,14 +586,14 @@ onUnmounted(() => {
         <UButton
           v-if="!vaSession.connected"
           block
-          size="sm"
+          size="md"
           color="primary"
           label="Sign in to VA.gov"
           @click="openVaSignIn"
         />
         <UButton
           block
-          size="sm"
+          size="md"
           :color="vaSession.connected ? 'primary' : 'neutral'"
           :variant="vaSession.connected ? 'solid' : 'outline'"
           label="Open disability rating"
@@ -584,7 +601,7 @@ onUnmounted(() => {
         />
         <UButton
           block
-          size="sm"
+          size="md"
           color="neutral"
           variant="ghost"
           label="Refresh ratings"
@@ -593,7 +610,7 @@ onUnmounted(() => {
         />
         <UButton
           block
-          size="sm"
+          size="md"
           color="neutral"
           variant="soft"
           label="Lock ratings again"
@@ -749,7 +766,7 @@ onUnmounted(() => {
             <UButton
               v-if="!hubCanImport"
               block
-              size="sm"
+              size="md"
               color="neutral"
               variant="outline"
               label="Sign in to Hub"
@@ -757,7 +774,7 @@ onUnmounted(() => {
             />
             <UButton
               block
-              size="sm"
+              size="md"
               color="neutral"
               variant="ghost"
               label="Open ClaimBuilder"
@@ -770,7 +787,7 @@ onUnmounted(() => {
           <p class="text-muted text-sm">
             Saved ratings on this device did not include individual conditions. Sign in at VA.gov to refresh.
           </p>
-          <UButton block size="sm" color="primary" label="Sign in to VA.gov" @click="openVaSignIn" />
+          <UButton block size="md" color="primary" label="Sign in to VA.gov" @click="openVaSignIn" />
         </div>
 
         <ul v-else-if="rows.length" class="space-y-2">

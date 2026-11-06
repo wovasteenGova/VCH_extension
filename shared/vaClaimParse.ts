@@ -52,7 +52,7 @@ const STATUS_LABELS: Record<string, string> = {
   REVIEW_OF_EVIDENCE: 'Review of evidence',
   PREPARATION_FOR_DECISION: 'Preparation for decision',
   PENDING_DECISION_APPROVAL: 'Pending decision approval',
-  COMPLETE: 'Complete',
+  COMPLETE: 'Completed',
   CANCELED: 'Canceled',
   CLOSED: 'Closed',
   APPEAL: 'Appeal',
@@ -67,15 +67,15 @@ const PHASE_LABELS: Record<string, string> = {
   REVIEW_OF_EVIDENCE: 'Review of evidence',
   PREPARATION_FOR_DECISION: 'Preparation for decision',
   PENDING_DECISION_APPROVAL: 'Pending decision approval',
-  COMPLETE: 'Complete'
+  COMPLETE: 'Completed'
 }
 
 const PREVIOUS_PHASE_LABELS: Record<string, string> = {
-  phase1CompleteDate: 'Phase 1 complete',
-  phase2CompleteDate: 'Phase 2 complete',
-  phase3CompleteDate: 'Phase 3 complete',
-  phase4CompleteDate: 'Phase 4 complete',
-  phase5CompleteDate: 'Phase 5 complete'
+  phase1CompleteDate: 'Phase 1 completed',
+  phase2CompleteDate: 'Phase 2 completed',
+  phase3CompleteDate: 'Phase 3 completed',
+  phase4CompleteDate: 'Phase 4 completed',
+  phase5CompleteDate: 'Phase 5 completed'
 }
 
 export function formatVaEnumLabel(value: unknown, map: Record<string, string> = STATUS_LABELS) {

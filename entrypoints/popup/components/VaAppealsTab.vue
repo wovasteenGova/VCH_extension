@@ -162,7 +162,7 @@ onMounted(() => {
       description="Ratings or claims are on this device, but appeals have not been pulled. Stay signed in at VA.gov and tap refresh, or open Track claims and tap Sync on the VCH bar."
     >
       <template #actions>
-        <UButton size="xs" color="primary" variant="soft" label="Refresh appeals" @click="loadAppeals" />
+        <UButton size="sm" color="primary" variant="soft" label="Refresh appeals" @click="loadAppeals" />
       </template>
     </UAlert>
 
@@ -175,7 +175,7 @@ onMounted(() => {
       description="Sign in at VA.gov so this tab can save appeals on your device. After that, they stay here even when you are signed out."
     >
       <template #actions>
-        <UButton size="xs" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />
+        <UButton size="sm" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />
       </template>
     </UAlert>
 

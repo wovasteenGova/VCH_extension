@@ -19,12 +19,8 @@ function hasRatingsCacheData(ratings: VaDeviceRatingsCache | null) {
   return Boolean(ratings && (ratings.rows.length > 0 || ratings.combinedRating != null))
 }
 
-export async function assessRatingsAvailability(): Promise<RatingsAvailability> {
-  const cache = await readVaDeviceCache()
-  if (hasRatingsCacheData(cache.ratings)) {
-    return { available: true, source: 'cache' }
-  }
-
+/** Network-only gate check when device cache has no ratings (avoids duplicate storage read). */
+async function assessRatingsAvailabilityFromNetwork(): Promise<RatingsAvailability> {
   const response = await fetchVaRatedDisabilities()
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
@@ -55,16 +51,29 @@ export async function assessRatingsAvailability(): Promise<RatingsAvailability> 
   return { available: true, source: 'live' }
 }
 
+export async function assessRatingsAvailability(): Promise<RatingsAvailability> {
+  const cache = await readVaDeviceCache()
+  if (hasRatingsCacheData(cache.ratings)) {
+    return { available: true, source: 'cache' }
+  }
+
+  return assessRatingsAvailabilityFromNetwork()
+}
+
 export async function refreshRatingsGateState(): Promise<RatingsGateState> {
-  const [vaSession, cache, availability] = await Promise.all([
+  const cache = await readVaDeviceCache()
+  const hasCachedRatings = hasRatingsCacheData(cache.ratings)
+
+  const [vaSession, availability] = await Promise.all([
     probeVaSession(),
-    readVaDeviceCache(),
-    assessRatingsAvailability()
+    hasCachedRatings
+      ? Promise.resolve<RatingsAvailability>({ available: true, source: 'cache' })
+      : assessRatingsAvailabilityFromNetwork()
   ])
 
   return {
     vaSession,
-    hasCachedRatings: hasRatingsCacheData(cache.ratings),
+    hasCachedRatings,
     availability
   }
 }

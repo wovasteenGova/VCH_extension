@@ -63,7 +63,12 @@ export default defineContentScript({
     'https://claimbuilder.veteranscentralhub.com/*',
     'https://*.claimbuilder.veteranscentralhub.com/*',
     'https://claimbuilder.veteranscentralhub.us/*',
-    'https://*.claimbuilder.veteranscentralhub.us/*'
+    'https://*.claimbuilder.veteranscentralhub.us/*',
+    /* Track claims UI (same app; canonical host is extension.*) */
+    'https://extension.veteranscentralhub.com/*',
+    'https://www.extension.veteranscentralhub.com/*',
+    'https://extension.veteranscentralhub.us/*',
+    'https://www.extension.veteranscentralhub.us/*'
   ],
   runAt: 'document_idle',
   main() {

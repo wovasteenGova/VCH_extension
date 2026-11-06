@@ -101,7 +101,7 @@ html.popup-expanded .popup-shell {
   label:where(:not([aria-disabled='true'])):has(> input[type='radio']:not(:disabled)),
   [data-clickable='true'],
   [role='tab']:not([aria-disabled='true']),
-  .popup-footer-backdrop {
+  .popup-footer-link-backdrop {
     cursor: pointer;
   }
 
@@ -133,7 +133,7 @@ html.popup-expanded .popup-shell {
   summary,
   label:has(input[type='checkbox']:not(:disabled)),
   label:has(input[type='radio']:not(:disabled)),
-  .popup-footer-backdrop,
+  .popup-footer-link-backdrop,
   .popup-footer-link-panel button,
   .popup-footer-nav button,
   [data-clickable='true']
@@ -169,16 +169,22 @@ html.popup-expanded .popup-shell {
 .popup-tab-scroll {
   overflow-x: hidden;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .popup-footer {
   flex-shrink: 0;
   overflow: visible;
-  padding-bottom: 4px;
+  padding-top: 0.375rem;
+  padding-bottom: 0;
+  /* Opaque bar so tab content and overlay dimmer never show through */
+  background-color: var(--ui-bg);
 }
 
 .popup-disclaimer {
   line-height: 1.35;
+  margin: 0;
+  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
 }
 
 .hub-destinations-panel {

@@ -11,7 +11,18 @@ import PopupThemeToggle from './components/PopupThemeToggle.vue'
 import PopupExpandControl from './components/PopupExpandControl.vue'
 
 const activeTab = ref('claims')
-const footerPanelOpen = ref(false)
+const footerLinkPanelOpen = ref(false)
+
+function closeFooterLinkPanel() {
+  footerLinkPanelOpen.value = false
+}
+
+function onFooterBackdropWheel(e: WheelEvent) {
+  const shell = (e.currentTarget as HTMLElement).closest('.popup-shell')
+  const scrollEl = shell?.querySelector('.popup-tab-scroll') as HTMLElement | null
+  if (!scrollEl) return
+  scrollEl.scrollTop += e.deltaY
+}
 
 const tabs = [
   { label: 'Claims', value: 'claims', icon: 'i-lucide-clipboard-list' },
@@ -23,15 +34,8 @@ const tabs = [
 
 <template>
   <UApp class="popup-app">
-    <div class="popup-shell grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-1.5 p-3 pb-2">
-      <div
-        v-if="footerPanelOpen"
-        class="popup-footer-backdrop absolute inset-0 z-[15] bg-black/60"
-        aria-hidden="true"
-        @click="footerPanelOpen = false"
-      />
-
-      <div class="popup-chrome relative z-30 min-h-0 space-y-2 overflow-visible pb-0.5">
+    <div class="popup-shell grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 px-3 pt-3 pb-0">
+      <div class="popup-chrome relative z-30 mb-1.5 min-h-0 space-y-2 overflow-visible pb-0.5">
         <header class="flex flex-col gap-1.5">
           <div class="flex items-start gap-3">
             <img
@@ -65,15 +69,25 @@ const tabs = [
         />
       </div>
 
-      <div class="popup-tab-scroll custom-scrollbar relative z-0 min-h-0 overflow-y-auto overscroll-contain">
-        <VaClaimTrackerTab v-if="activeTab === 'claims'" />
-        <VaRatingsTab v-if="activeTab === 'ratings'" />
-        <VaTrackTab v-if="activeTab === 'track'" />
-        <HubTab v-if="activeTab === 'hub'" />
+      <!-- min-h-0 + overflow-hidden so 1fr row stays bounded and inner overflow-y scrolls -->
+      <div class="relative z-0 h-full min-h-0 overflow-hidden">
+        <div
+          v-if="footerLinkPanelOpen"
+          class="popup-footer-link-backdrop absolute inset-0 z-10 bg-black/50"
+          aria-hidden="true"
+          @click="closeFooterLinkPanel"
+          @wheel.passive="onFooterBackdropWheel"
+        />
+        <div class="popup-tab-scroll custom-scrollbar relative z-0 h-full min-h-0 overflow-y-auto overscroll-contain">
+          <VaClaimTrackerTab v-if="activeTab === 'claims'" />
+          <VaRatingsTab v-if="activeTab === 'ratings'" />
+          <VaTrackTab v-if="activeTab === 'track'" />
+          <HubTab v-if="activeTab === 'hub'" />
+        </div>
       </div>
 
-      <div class="popup-footer relative z-20 shrink-0 space-y-1 border-t border-default/60 pt-1.5">
-        <PopupFooterNav v-model:open="footerPanelOpen" />
+      <div class="popup-footer relative z-20 mt-0 shrink-0 space-y-1 border-t border-default/60 bg-default pt-1.5 pb-0">
+        <PopupFooterNav v-model:open="footerLinkPanelOpen" />
 
         <p class="popup-disclaimer shrink-0 text-center text-muted text-[0.6rem] leading-snug">
           Not affiliated with VA.gov. Sign in at VA.gov first; endpoints may change when VA updates their site.
