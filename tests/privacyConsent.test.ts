@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { acceptLocalDataAccess, clearVaDataAndConsent, grantCloudConsent, hasCloudConsent, hasLocalDataConsent, PRIVACY_CONSENT_KEY, revokeCloudConsent } from '../shared/privacyConsent'
+import { acceptLocalDataAccess, clearVaDataAndConsent, grantCloudConsent, grantCloudConsents, hasCloudConsent, hasLocalDataConsent, PRIVACY_CONSENT_KEY, revokeCloudConsent } from '../shared/privacyConsent'
 import { readHubAccessToken } from '../shared/hubSessionRead'
 
 vi.mock('../shared/hubSessionRead', () => ({ readHubAccessToken: vi.fn() }))
@@ -18,6 +18,15 @@ beforeEach(() => {
 })
 
 describe('separate local and cloud permission', () => {
+  it('records one atomic approval for ratings and selected letters, bound to the reviewed account', async () => {
+    await acceptLocalDataAccess()
+    await grantCloudConsents(['ratings', 'letters'], 'account-a')
+    expect(await hasCloudConsent('ratings')).toBe(true)
+    expect(await hasCloudConsent('letters')).toBe(true)
+    expect(await hasCloudConsent('track')).toBe(false)
+    await expect(grantCloudConsents(['track'], 'different-account')).rejects.toThrow('account changed')
+    expect(await hasCloudConsent('track')).toBe(false)
+  })
   it('starts without consent and local consent never grants a cloud import', async () => {
     expect(await hasLocalDataConsent()).toBe(false)
     await expect(grantCloudConsent('letters')).rejects.toThrow('Enable')

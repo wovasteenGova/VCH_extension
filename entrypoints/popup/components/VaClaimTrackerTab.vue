@@ -27,6 +27,7 @@ import { isRecentVaDeviceSync, readVaDeviceCache, readVaCacheMeta, saveVaClaimsC
 import { hasOpenVaGovTab } from '@/shared/vaGovTabFetch'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
 
+const toast = useToast()
 const loading = ref(false)
 /** True until first bootstrap finishes (cache + optional VA fetch); avoids empty-state flash while data loads. */
 const claimsBootstrapPending = ref(true)
@@ -144,12 +145,12 @@ async function loadClaims() {
     if (!response.ok) {
       await refreshDeviceCacheMeta()
       if (applyCachedClaims(cachedClaims) || (await hydrateClaimsFromDevice())) {
-        return
+        return false
       }
       isStale.value = false
       error.value = response.error
       claims.value = []
-      return
+      return false
     }
 
     const parsed = unwrapVaList(response.data)
@@ -160,12 +161,13 @@ async function loadClaims() {
     if (merged.length === 0) {
       await refreshDeviceCacheMeta()
       if (applyCachedClaims(cachedClaims) || (await hydrateClaimsFromDevice())) {
-        return
+        return false
       }
       isStale.value = false
       error.value = null
       claims.value = []
-      return
+      vaLiveSession.value = true
+      return saveVaClaimsCache([])
     }
 
     claims.value = merged
@@ -177,13 +179,29 @@ async function loadClaims() {
       error.value = 'Loaded claims from VA.gov but could not save them on this device.'
     }
     await refreshDeviceCacheMeta()
+    return saved
   } catch {
     loading.value = false
     await refreshDeviceCacheMeta()
     if (!(applyCachedClaims(cachedClaims) || (await hydrateClaimsFromDevice()))) {
       error.value = 'Could not read claims from VA.gov.'
     }
+    return false
   }
+}
+
+async function handleRefreshClaims() {
+  const refreshed = await loadClaims()
+  toast.add(refreshed
+    ? { title: 'VA claims refreshed', color: 'success' }
+    : { title: 'Could not refresh VA claims', description: error.value ?? 'Showing saved claims. Open VA.gov and try again.', color: 'warning' })
+}
+
+async function handleRestoreClaims() {
+  const restored = await restoreClaimsFromDevice()
+  toast.add(restored
+    ? { title: 'Saved claims restored', color: 'success' }
+    : { title: 'No saved claims available', color: 'warning' })
 }
 
 async function bootstrapClaims() {
@@ -314,7 +332,7 @@ function openVaClaims() {
           variant="ghost"
           icon="i-lucide-hard-drive-download"
           aria-label="Restore saved claims"
-          @click="restoreClaimsFromDevice"
+          @click="handleRestoreClaims"
         />
         <UButton
           size="xs"
@@ -323,7 +341,7 @@ function openVaClaims() {
           icon="i-lucide-refresh-cw"
           :loading="loading"
           aria-label="Refresh claims"
-          @click="loadClaims"
+          @click="handleRefreshClaims"
         />
       </div>
     </div>

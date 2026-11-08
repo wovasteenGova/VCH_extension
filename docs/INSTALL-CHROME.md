@@ -23,9 +23,9 @@ Same steps, but open **`edge://extensions`** instead of Chrome.
 
 1. Sign in at [VA.gov](https://www.va.gov/) (Login.gov, ID.me, etc.).
 2. Open [Manage claims](https://www.va.gov/track-claims/your-claims/) at least once.
-3. Click the extension icon to view claims, ratings, appeals, and Hub shortcuts.
+3. Click the extension icon and approve local VA data access. **VA Profile** is the first tab, with ratings and decision letters together. Claims, Track, and Hub have their own tabs.
 
-Optional: sign in to [Veterans Central Hub](https://www.veteranscentralhub.com) in the same browser to sync track data and decision letters to ClaimBuilder.
+Optional: sign in to [Veterans Central Hub](https://www.veteranscentralhub.com) in the same browser. In **VA Profile**, find decision letters, select individual PDFs or **Select all letters**, and review the shared **Save VA data to your VCH account** approval before clicking Save. Only unlocked ratings/profile and selected letters are included. **VA Profile → Data controls** manages revocation, local deletion, and optional Track sharing.
 
 ## Updates
 

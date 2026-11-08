@@ -8,11 +8,11 @@ Help a signed-in veteran review their VA claims, ratings, and decision letters a
 
 ## What changed in this audit
 
-- Added a dedicated Letters tab. It uses VA.gov's authenticated `GET /v0/claim_letters` list and `GET /v0/claim_letters/:documentId?document_type=:docType` PDF request. Numeric decision types 184 and 27 are supported even when VA omits descriptive labels.
-- Finding letters reads metadata locally. It does not upload or download PDFs. The user selects letters, accepts the disclosure, and clicks **Send selected to VCH**. Each selected PDF is then sent to the existing private document-library endpoint, with `va_decision` as its classification hint. Existing server file validation and content-hash deduplication still apply.
+- Added decision letters alongside ratings in the first VA Profile tab. It uses VA.gov's authenticated `GET /v0/claim_letters` list and `GET /v0/claim_letters/:documentId?document_type=:docType` PDF request. Numeric decision types 184 and 27 are supported even when VA omits descriptive labels.
+- Finding letters reads metadata locally. It does not upload or download PDFs. The user selects letters, accepts the shared Save VA data disclosure, and clicks **Save to my VCH account**. Each selected PDF is then sent to the existing private document-library endpoint, with `va_decision` as its classification hint. Existing server file validation and content-hash deduplication still apply.
 - No letters are automatically assigned to the first completed claim. The library remains the destination when VA omits a claim ID; users can attach the right document later.
 - Removed background PDF downloads on page probes and raw PDF persistence in extension storage. An install/update clears the old pending-PDF key. Failed imports stay selected for retry; per-letter results report only confirmed server responses.
-- Added local-data consent before mounting VA-reading UI, separate account-scoped cloud grants, revocation, and local-data deletion. Letters always require the selection and send action, regardless of earlier imports. Track bridge access and ratings imports have separate permissions.
+- Added local-data consent before mounting VA-reading UI, separate account-scoped cloud grants, revocation, and local-data deletion. Letters always require the selection and send action, regardless of earlier imports. The shared VA Profile approval covers unlocked ratings/profile and selected letters together; Track sharing is managed separately in VA Profile → Data controls.
 - Restricted VA requests to known read endpoints and exact HTTPS origins. Removed arbitrary POST proxies, unrestricted MAIN-world fetch fallback, wildcard VCH host access, unused external messaging, and environment-controlled production destinations.
 - Added response timeouts, bounded JSON/PDF reads, PDF-header validation, and redirect rejection. Invalid sign-in HTML is never accepted as a successful API result.
 - Serialized cache writes in the service worker so ratings, claims, and appeals cannot overwrite one another's concurrent updates. Cache deletion notifies active views. A failed VA request is no longer reported as a fresh saved sync.
@@ -22,7 +22,7 @@ Help a signed-in veteran review their VA claims, ratings, and decision letters a
 
 Accurately declare personally identifiable information, health information, authentication information (VCH sign-in tokens), and website content read to provide the extension. Do not select “no user data” merely because some records stay on-device. Do not claim that local VA records are encrypted by this extension. No VA passwords or VA session cookies are sent to VCH.
 
-Use the privacy policy URL `https://www.veteranscentralhub.com/privacy#vch-web-extension`. Before submission, the public policy and install/help page must describe the new **Letters** selection flow, local profile fields, consent/revocation controls, and VCH's existing document analysis processors and retention/deletion practices. A matching draft is included in `PRIVACY-DISCLOSURE.md`; deploying the extension does not publish that draft.
+Use the privacy policy URL `https://www.veteranscentralhub.com/privacy#vch-web-extension`. Before submission, the public policy and install/help page must describe the **VA Profile** shared approval and letter selection flow, local profile fields, consent/revocation controls, and VCH's existing document analysis processors and retention/deletion practices. A matching draft is included in `PRIVACY-DISCLOSURE.md`; deploying the extension does not publish that draft.
 
 Confirm the dashboard's Limited Use certifications against actual VCH server practices. Do not invent guarantees about human access, encryption, retention, regulatory compliance, or third-party processors.
 
@@ -54,7 +54,7 @@ The ZIP is `.output/vch-extension-<version>-chrome.zip`. Upload that ZIP, never 
 For an authenticated acceptance test, use your own VA.gov and VCH accounts; never put veteran credentials in reviewer instructions or fixtures:
 
 1. Load the production build unpacked in a clean browser profile. Before local consent there must be no VA API calls. Confirm the disclosure is readable at all display sizes.
-2. Sign in on VA.gov normally. Open **Letters → Find decision letters**. Compare the available decisions against VA.gov's own claim letters page. Verify metadata with numeric `docType` and no label appears.
+2. Sign in on VA.gov normally. Open **VA Profile → Find decision letters**. Compare the available decisions against VA.gov's own claim letters page. Verify metadata with numeric `docType` and no label appears.
 3. Confirm no PDF downloads or VCH uploads happen just from finding, refreshing, switching tabs, or leaving an unchecked consent box.
 4. Select one letter, approve the disclosure, and send it. Confirm exactly that PDF appears in the correct VCH account's private library. Confirm its contents and scan/classification. An unrelated claim must not receive a link.
 5. Repeat the import to verify server deduplication; test a failed download, expired VCH sign-in, and partial multi-letter success. A failed import must not show “Saved.” Keep the extension window open until the server confirms; popup uploads are not durable background jobs.

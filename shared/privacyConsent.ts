@@ -42,11 +42,20 @@ export async function hasCloudConsent(scope: CloudScope) {
 
 /** Call only from an explicit confirmation control in extension UI. */
 export async function grantCloudConsent(scope: CloudScope) {
+  return grantCloudConsents([scope])
+}
+
+/** One user approval can cover all data categories included in the same save. */
+export async function grantCloudConsents(scopes: CloudScope[], expectedAccountId?: string) {
   const accountId = await currentHubAccountId()
   const consent = await readConsent()
   if (!accountId || !consent.localAcceptedAt) throw new Error('Enable VA data access and sign in to VCH first.')
+  if (expectedAccountId && expectedAccountId !== accountId) throw new Error('Your VCH account changed. Review the destination account and approve again.')
+  const acceptedAt = new Date().toISOString()
+  const cloud = { ...consent.cloud }
+  for (const scope of scopes) cloud[scope] = { accountId, acceptedAt }
   await browser.storage.local.set({ [PRIVACY_CONSENT_KEY]: {
-    ...consent, cloud: { ...consent.cloud, [scope]: { accountId, acceptedAt: new Date().toISOString() } }
+    ...consent, cloud
   } })
 }
 

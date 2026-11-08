@@ -2,10 +2,9 @@
 import { EXTENSION_VERSION } from '@/shared/version'
 import VaClaimTrackerTab from './components/VaClaimTrackerTab.vue'
 import PrivacySettings from './components/PrivacySettings.vue'
-import VaDecisionLettersTab from './components/VaDecisionLettersTab.vue'
+import VaProfileTab from './components/VaProfileTab.vue'
 import { hasLocalDataConsent, PRIVACY_CONSENT_KEY } from '@/shared/privacyConsent'
 import VaTrackTab from './components/VaTrackTab.vue'
-import VaRatingsTab from './components/VaRatingsTab.vue'
 import HubTab from './components/HubTab.vue'
 import PopupFooterNav from './components/PopupFooterNav.vue'
 import ConnectionStatusBar from './components/ConnectionStatusBar.vue'
@@ -13,7 +12,7 @@ import PopupUiScaleControl from './components/PopupUiScaleControl.vue'
 import PopupThemeToggle from './components/PopupThemeToggle.vue'
 import PopupExpandControl from './components/PopupExpandControl.vue'
 
-const activeTab = ref('claims')
+const activeTab = ref('profile')
 const privacyReady = ref(false)
 const localConsent = ref(false)
 const privacyOpen = ref(false)
@@ -46,16 +45,15 @@ function onFooterBackdropWheel(e: WheelEvent) {
 }
 
 const tabs = [
+  { label: 'VA Profile', value: 'profile', icon: 'i-lucide-user-round' },
   { label: 'Claims', value: 'claims', icon: 'i-lucide-clipboard-list' },
-  { label: 'Ratings', value: 'ratings', icon: 'i-lucide-percent' },
-  { label: 'Letters', value: 'letters', icon: 'i-lucide-file-text' },
   { label: 'Track', value: 'track', icon: 'i-lucide-radar' },
   { label: 'Hub', value: 'hub', icon: 'i-lucide-house' }
 ]
 </script>
 
 <template>
-  <UApp class="popup-app">
+  <UApp class="popup-app" :toaster="{ position: 'top-center', max: 1, duration: 5000 }">
     <div class="popup-shell grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 px-3 pt-3 pb-0">
       <div class="popup-chrome relative z-30 mb-1.5 min-h-0 space-y-2 overflow-visible pb-0.5">
         <header class="flex flex-col gap-1.5">
@@ -86,7 +84,7 @@ const tabs = [
           v-if="localConsent && !privacyOpen"
           v-model="activeTab"
           :items="tabs"
-          default-value="claims"
+          default-value="profile"
           :unmount-on-hide="true"
           class="vch-popup-tabs w-full"
         />
@@ -105,9 +103,8 @@ const tabs = [
           <p v-if="!privacyReady" role="status" class="py-4 text-sm text-muted">Loading your privacy preferences…</p>
           <PrivacySettings v-else-if="!localConsent || privacyOpen" :accepted="localConsent" @accepted="acceptedPrivacy" @cleared="clearedPrivacy" @close="privacyOpen = false" />
           <template v-else>
-          <VaDecisionLettersTab v-if="activeTab === 'letters'" />
+          <VaProfileTab v-if="activeTab === 'profile'" @privacy="privacyOpen = true" />
           <VaClaimTrackerTab v-if="activeTab === 'claims'" />
-          <VaRatingsTab v-if="activeTab === 'ratings'" />
           <VaTrackTab v-if="activeTab === 'track'" />
           <HubTab v-if="activeTab === 'hub'" />
           </template>
@@ -115,7 +112,7 @@ const tabs = [
       </div>
 
       <div class="popup-footer relative z-20 mt-0 shrink-0 space-y-1 border-t border-default/60 bg-default pt-1.5 pb-0">
-        <div class="flex items-center justify-between gap-2"><PopupFooterNav v-model:open="footerLinkPanelOpen" /><UButton size="xs" variant="ghost" icon="i-lucide-shield" @click="privacyOpen = true">Privacy</UButton></div>
+        <PopupFooterNav v-model:open="footerLinkPanelOpen" />
 
         <p class="popup-disclaimer shrink-0 text-center text-muted text-[0.6rem] leading-snug">
           Not affiliated with VA.gov. Sign in at VA.gov first; endpoints may change when VA updates their site.

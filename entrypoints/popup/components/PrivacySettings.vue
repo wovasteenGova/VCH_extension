@@ -11,6 +11,7 @@ const busy = ref(false)
 const error = ref('')
 const status = ref('')
 const account = ref('')
+const toast = useToast()
 
 onMounted(async () => {
   trackEnabled.value = await hasCloudConsent('track')
@@ -20,30 +21,36 @@ onMounted(async () => {
 async function enableLocal() {
   if (!localApproval.value || busy.value) return
   busy.value = true
-  try { await acceptLocalDataAccess(); emit('accepted') }
-  catch { error.value = 'Could not save your choice. Try again.' }
+  try { await acceptLocalDataAccess(); toast.add({ title: 'VA data access enabled', color: 'success' }); emit('accepted') }
+  catch { error.value = 'Could not save your choice. Try again.'; toast.add({ title: 'Could not enable VA data access', description: error.value, color: 'error' }) }
   finally { busy.value = false }
 }
 
 async function enableTrack() {
   if (!trackApproval.value || busy.value) return
   busy.value = true
-  try { await grantCloudConsent('track'); trackEnabled.value = true; status.value = 'ClaimBuilder can now read your saved claims and appeals for cloud sync.' }
-  catch (caught) { error.value = caught instanceof Error ? caught.message : 'Could not enable cloud sync.' }
+  try { await grantCloudConsent('track'); trackEnabled.value = true; status.value = 'ClaimBuilder can now read your saved claims and appeals for cloud sync.'; toast.add({ title: 'Track sync enabled', color: 'success' }) }
+  catch (caught) { error.value = caught instanceof Error ? caught.message : 'Could not enable cloud sync.'; toast.add({ title: 'Could not enable Track sync', description: error.value, color: 'error' }) }
   finally { busy.value = false }
 }
 
 async function revoke() {
-  await revokeCloudConsent()
-  trackEnabled.value = false
-  trackApproval.value = false
-  status.value = 'Cloud access revoked. Data already saved to VCH remains in your account.'
+  try {
+    await revokeCloudConsent()
+    trackEnabled.value = false
+    trackApproval.value = false
+    status.value = 'Cloud access revoked. Data already saved to VCH remains in your account.'
+    toast.add({ title: 'Cloud access revoked', description: status.value, color: 'success' })
+  } catch {
+    error.value = 'Could not revoke cloud access. Try again.'
+    toast.add({ title: 'Could not revoke cloud access', description: error.value, color: 'error' })
+  }
 }
 
 async function clear() {
   busy.value = true
-  try { await clearVaDataAndConsent(); emit('cleared') }
-  catch { error.value = 'Could not clear all data. Try again.' }
+  try { await clearVaDataAndConsent(); toast.add({ title: 'Local VA data cleared', description: 'Local access and cloud permissions were revoked.', color: 'success' }); emit('cleared') }
+  catch { error.value = 'Could not clear all data. Try again.'; toast.add({ title: 'Could not clear VA data', description: error.value, color: 'error' }) }
   finally { busy.value = false }
 }
 </script>
@@ -73,7 +80,7 @@ async function clear() {
         </template>
         <UButton variant="outline" @click="revoke">Revoke all cloud access</UButton>
       </div>
-      <p>Decision letters have a separate selection and confirmation in the Letters tab. Ratings and profile imports have their own confirmation in Ratings.</p>
+      <p>Ratings and selected decision letters share one Save VA data approval in VA Profile. Only the data included in that save is sent.</p>
       <UButton color="error" variant="outline" :loading="busy" @click="clear">Clear local VA data and revoke access</UButton>
       <p class="text-xs text-muted">Clearing here removes cached VA data and permissions from this extension. Delete imported documents and cloud data separately in your VCH account. Theme and display preferences are preserved.</p>
     </template>

@@ -1,22 +1,15 @@
 <script setup lang="ts">
-import { grantCloudConsent, hasCloudConsent } from '@/shared/privacyConsent'
-import {
-  buildClaimBuilderVaImportPayload,
-  checkClaimBuilderVaImportSync,
-  importVaRatingsToClaimBuilder
-} from '@/shared/claimBuilderVaImport'
-import { openHubSignIn, type ConnectionState } from '@/shared/connectionStatus'
-import { readHubSession } from '@/shared/hubSessionRead'
+import { buildClaimBuilderVaImportPayload } from '@/shared/claimBuilderVaImport'
+import type { ConnectionState } from '@/shared/connectionStatus'
 import { VA_DISABILITY_RATING_PAGE } from '@/shared/vaEndpoints'
 import { openVaSignIn } from '@/shared/vaSignInNavigation'
 import { fetchVaRatedDisabilities, formatVaDate } from '@/shared/vaClient'
 import { parseVaRatingsResponse, sortRatingsByPercent, type ParsedVaRating } from '@/shared/vaRatingParse'
 import type { ParsedVaUserProfileForImport } from '@/shared/vaUserProfileParse'
 import { hydrateVaProfileFromDevice, refreshVaProfileForImport } from '@/shared/vaUserProfileFetch'
-import { buildVaImportPreviewItems, formatVaImportSuccessMessage } from '@/shared/vaImportPreview'
+import { buildVaImportPreviewItems } from '@/shared/vaImportPreview'
 import { persistLiveVaCaches } from '@/shared/vaCacheSync'
 import { readVaDeviceCache, saveVaRatingsCache } from '@/shared/vaDeviceCache'
-import { CLAIMBUILDER_URL } from '@/shared/urls'
 import {
   assessRatingsAvailability,
   refreshRatingsGateState,
@@ -38,6 +31,7 @@ const {
   removeLock
 } = useRatingsPasskeyLock()
 
+const toast = useToast()
 const loading = ref(false)
 /** True while fetching from VA.gov in the background (refresh button); main list shows cache first. */
 const ratingsSyncing = ref(false)
@@ -47,20 +41,10 @@ const lastSyncedAt = ref<string | null>(null)
 const rows = ref<ParsedVaRating[]>([])
 const combinedRating = ref<number | null>(null)
 const combinedEffectiveDate = ref<string | undefined>()
-const importConsent = ref(false)
-const importBusy = ref(false)
-const importError = ref<string | null>(null)
-const importSuccess = ref<string | null>(null)
-const importPanelExpanded = ref(false)
-const importPreviewExpanded = ref(false)
-const claimBuilderSyncStatus = ref<'idle' | 'checking' | 'synced' | 'out_of_sync'>('idle')
-const claimBuilderSyncedAt = ref<string | null>(null)
-let claimBuilderSyncCheckToken = 0
-const hubSession = ref<ConnectionState>({ connected: false, label: 'Checking…' })
-const hubCanImport = ref(false)
 const vaSession = ref<ConnectionState>({ connected: false, label: 'Checking…' })
 const importProfilePreview = ref<ParsedVaUserProfileForImport | null>(null)
 const gateChecking = ref(true)
+const profileRefreshing = ref(false)
 const hasCachedRatings = ref(false)
 const ratingsGate = ref<RatingsAvailability>({
   available: false,
@@ -85,18 +69,6 @@ const emptyUnlockedMessage = computed(() => {
 
 const hasRatingsData = computed(() => combinedRating.value != null || rows.value.length > 0)
 
-const hasProfilePreviewData = computed(() => {
-  const profile = importProfilePreview.value
-  if (!profile) return false
-  return Boolean(
-    profile.dateOfBirth
-    || profile.phone
-    || profile.fullName
-    || profile.lastFourSsn
-    || profile.servicePeriods?.length
-  )
-})
-
 const importPreviewItems = computed(() => buildVaImportPreviewItems({
   combinedRating: combinedRating.value,
   combinedEffectiveDate: combinedEffectiveDate.value,
@@ -111,88 +83,24 @@ const currentImportPayload = computed(() => buildClaimBuilderVaImportPayload({
   profile: importProfilePreview.value
 }))
 
-const showCollapsedClaimBuilderSync = computed(() =>
-  claimBuilderSyncStatus.value === 'synced'
-  && !importPanelExpanded.value
-  && hubCanImport.value
-  && hasRatingsData.value
-)
-
-const showClaimBuilderImportPanel = computed(() =>
-  (combinedRating.value != null || rows.value.length)
-  && !showCollapsedClaimBuilderSync.value
-)
-
-async function refreshClaimBuilderSyncStatus() {
-  if (!unlocked.value || !hasRatingsData.value) {
-    if (claimBuilderSyncStatus.value !== 'synced') {
-      claimBuilderSyncStatus.value = 'idle'
-      claimBuilderSyncedAt.value = null
-    }
-    return
-  }
-
-  if (!hubCanImport.value) {
-    return
-  }
-
-  if (!await hasCloudConsent('ratings')) return
-  const previousStatus = claimBuilderSyncStatus.value
-  const token = ++claimBuilderSyncCheckToken
-  claimBuilderSyncStatus.value = 'checking'
-
-  const status = await checkClaimBuilderVaImportSync(currentImportPayload.value)
-  if (token !== claimBuilderSyncCheckToken) return
-
-  if (!status.checked) {
-    claimBuilderSyncStatus.value = previousStatus === 'synced'
-      ? 'synced'
-      : 'idle'
-    return
-  }
-
-  claimBuilderSyncStatus.value = status.synced ? 'synced' : 'out_of_sync'
-  claimBuilderSyncedAt.value = status.importedAt
-  if (status.synced) {
-    importPanelExpanded.value = false
-    importPreviewExpanded.value = false
-  }
-}
-
-function markClaimBuilderSynced(importedAt?: string | null) {
-  claimBuilderSyncStatus.value = 'synced'
-  claimBuilderSyncedAt.value = importedAt ?? new Date().toISOString()
-  importPanelExpanded.value = false
-  importPreviewExpanded.value = false
-}
-
-function expandClaimBuilderImportPanel() {
-  importPanelExpanded.value = true
-  importSuccess.value = null
-}
-
 async function refreshImportProfilePreview() {
-  const previous = importProfilePreview.value
-  const next = await refreshVaProfileForImport()
-  importProfilePreview.value = next ?? previous ?? await hydrateVaProfileFromDevice()
+  profileRefreshing.value = true
+  try {
+    const previous = importProfilePreview.value
+    const next = await refreshVaProfileForImport()
+    importProfilePreview.value = next ?? previous ?? await hydrateVaProfileFromDevice()
+  } finally { profileRefreshing.value = false }
 }
 
 async function refreshRatingsAndProfile() {
-  await Promise.all([loadRatings(), refreshImportProfilePreview()])
-  void refreshClaimBuilderSyncStatus()
-}
-
-async function refreshHubSession() {
-  const session = await readHubSession()
-  hubSession.value = {
-    connected: session.connected,
-    label: session.label
+  try {
+    const [refreshed] = await Promise.all([loadRatings(), refreshImportProfilePreview()])
+    toast.add(!refreshed
+      ? { title: 'Could not refresh VA ratings', description: error.value ?? 'Showing previously saved ratings.', color: 'warning' }
+      : { title: 'VA ratings refreshed', color: 'success' })
+  } catch (caught) {
+    toast.add({ title: 'Could not refresh VA ratings', description: caught instanceof Error ? caught.message : 'Try again.', color: 'error' })
   }
-  hubCanImport.value = session.canImport
-  if (session.canImport && importError.value?.toLowerCase().includes('sign in')) {
-    importError.value = null
-  }
-  void refreshClaimBuilderSyncStatus()
 }
 
 async function refreshRatingsGate() {
@@ -236,12 +144,6 @@ function clearRatingsDisplay() {
   rows.value = []
   combinedRating.value = null
   combinedEffectiveDate.value = undefined
-  importConsent.value = false
-  importError.value = null
-  importSuccess.value = null
-  importPanelExpanded.value = false
-  claimBuilderSyncStatus.value = 'idle'
-  claimBuilderSyncedAt.value = null
 }
 
 async function hydrateRatingsFromDevice() {
@@ -255,7 +157,7 @@ async function hydrateRatingsFromDevice() {
 }
 
 async function loadRatings() {
-  if (!unlocked.value) return
+  if (!unlocked.value) return false
 
   error.value = null
   ratingsSyncing.value = true
@@ -280,13 +182,13 @@ async function loadRatings() {
       if (restored || hasRatingsData.value) {
         isStale.value = !vaSession.value.connected
         error.value = null
-        return
+        return false
       }
       isStale.value = false
-      error.value = response.error
       clearRatingsDisplay()
+      error.value = response.error
       void refreshRatingsGate()
-      return
+      return false
     }
 
     const summary = parseVaRatingsResponse(response.data)
@@ -305,6 +207,7 @@ async function loadRatings() {
     await persistLiveVaCaches()
     const cache = await readVaDeviceCache()
     lastSyncedAt.value = cache.lastSyncedAt
+    return true
   } finally {
     ratingsSyncing.value = false
     loading.value = false
@@ -313,58 +216,6 @@ async function loadRatings() {
 
 function openVaDisabilityRating() {
   void browser.tabs.create({ url: VA_DISABILITY_RATING_PAGE })
-}
-
-function openClaimBuilder(syncAfterImport = false) {
-  const base = CLAIMBUILDER_URL.replace(/\/$/, '')
-  const url = syncAfterImport ? `${base}/?vchVaSync=1` : base
-  void browser.tabs.create({ url })
-}
-
-async function populateClaimBuilderSettings() {
-  if (!importConsent.value || importBusy.value) return
-  if (!rows.value.length && combinedRating.value == null) return
-
-  importBusy.value = true
-  importError.value = null
-  importSuccess.value = null
-
-  try {
-    await refreshHubSession()
-    if (!hubCanImport.value) {
-      throw new Error(`Sign in at veteranscentralhub.com in this browser, then try again.`)
-    }
-
-    await grantCloudConsent('ratings')
-    const userResponse = await refreshVaProfileForImport()
-    const profile = userResponse
-
-    const result = await importVaRatingsToClaimBuilder(
-      buildClaimBuilderVaImportPayload({
-        combinedRating: combinedRating.value,
-        combinedEffectiveDate: combinedEffectiveDate.value,
-        rows: rows.value,
-        profile
-      })
-    )
-
-    const applied = result.appliedToConditionIds.length
-    importSuccess.value = formatVaImportSuccessMessage({
-      appliedToConditionIds: result.appliedToConditionIds,
-      appliedProfileFields: result.appliedProfileFields,
-      conditionCount: result.conditionCount
-    })
-    markClaimBuilderSynced(result.importedAt)
-    void refreshClaimBuilderSyncStatus()
-    openClaimBuilder(true)
-  } catch (caught) {
-    importError.value = caught instanceof Error ? caught.message : 'Could not save to your VCH account.'
-    if (importError.value.toLowerCase().includes('sign in')) {
-      await refreshHubSession()
-    }
-  } finally {
-    importBusy.value = false
-  }
 }
 
 function lockRatings() {
@@ -381,23 +232,13 @@ watch(unlocked, async (isUnlocked) => {
       error.value = null
     }
     importProfilePreview.value = await hydrateVaProfileFromDevice()
-    void refreshHubSession()
     void refreshImportProfilePreview()
     void loadRatings()
-    void refreshClaimBuilderSyncStatus()
   } else {
     clearRatingsDisplay()
     importProfilePreview.value = null
   }
 })
-
-watch(
-  [rows, combinedRating, combinedEffectiveDate, importProfilePreview, hubCanImport],
-  () => {
-    void refreshClaimBuilderSyncStatus()
-  },
-  { deep: true }
-)
 
 onMounted(async () => {
   const onStorage = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
@@ -405,17 +246,18 @@ onMounted(async () => {
       lockRatings()
       clearRatingsDisplay()
       importProfilePreview.value = null
-      importConsent.value = false
     }
   }
   browser.storage.onChanged.addListener(onStorage)
   onUnmounted(() => browser.storage.onChanged.removeListener(onStorage))
-  await Promise.all([init(), refreshHubSession(), refreshRatingsGate()])
+  await Promise.all([init(), refreshRatingsGate()])
 })
 
 onUnmounted(() => {
   lockRatings()
 })
+const ready = computed(() => unlocked.value && hasRatingsData.value && !loading.value && !ratingsSyncing.value && !profileRefreshing.value)
+defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPayload })
 </script>
 
 <template>
@@ -646,155 +488,6 @@ onUnmounted(() => {
           <p v-if="combinedEffectiveDate" class="mt-1 text-muted text-xs">
             Effective {{ formatVaDate(combinedEffectiveDate) }}
           </p>
-        </div>
-
-        <div
-          v-if="showCollapsedClaimBuilderSync"
-          class="rounded-lg border border-primary/30 bg-primary/10 p-3"
-        >
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex min-w-0 items-center gap-2">
-              <span class="flex size-8 shrink-0 items-center justify-center rounded-md border border-primary/40 bg-primary/15">
-                <UIcon name="i-lucide-cloud-check" class="size-4 text-primary" />
-              </span>
-              <div class="min-w-0">
-                <p class="font-medium text-sm text-highlighted">
-                  Synced with your VCH account
-                </p>
-                <p v-if="claimBuilderSyncedAt" class="truncate text-xs text-muted">
-                  Last populated {{ formatVaDate(claimBuilderSyncedAt) }}
-                </p>
-              </div>
-            </div>
-            <UButton
-              size="xs"
-              color="primary"
-              variant="soft"
-              label="Resync"
-              @click="expandClaimBuilderImportPanel"
-            />
-          </div>
-        </div>
-
-        <div
-          v-else-if="showClaimBuilderImportPanel"
-          class="space-y-3 rounded-lg border border-default bg-elevated/30 p-3"
-        >
-          <div class="space-y-1.5">
-            <p class="text-base font-semibold leading-snug text-highlighted">
-              Save VA data to your VCH account
-            </p>
-            <p class="text-sm leading-relaxed text-muted">
-              With your approval, this extension sends the items below to your signed-in Veterans Central Hub account. Data is stored securely and used to pre-fill ClaimBuilder, Hub entitlements guidance, and related benefits tools. The benefits calculator still asks before applying your rating.
-            </p>
-          </div>
-
-          <div
-            v-if="importPreviewItems.length"
-            class="rounded-md border border-default/70 bg-default/40 p-2.5"
-          >
-            <button
-              type="button"
-              class="flex w-full items-center justify-between gap-2 text-left"
-              @click="importPreviewExpanded = !importPreviewExpanded"
-            >
-              <span class="text-sm font-medium text-highlighted">
-                Will send to your VCH account
-                <span class="font-normal text-muted">({{ importPreviewItems.length }})</span>
-              </span>
-              <UIcon
-                :name="importPreviewExpanded ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-                class="size-3.5 shrink-0 text-muted"
-              />
-            </button>
-            <div v-show="importPreviewExpanded" class="mt-1.5 space-y-1.5">
-              <ul class="max-h-36 space-y-1 overflow-y-auto overscroll-contain custom-scrollbar">
-                <li
-                  v-for="item in importPreviewItems"
-                  :key="item.id"
-                  class="text-xs leading-snug text-muted"
-                >
-                  <span class="font-medium text-highlighted">{{ item.label }}</span>
-                  <span v-if="item.detail">: {{ item.detail }}</span>
-                </li>
-              </ul>
-              <p class="text-xs leading-relaxed text-muted">
-                Matching claim names also get their current VA % updated for Increase filing. VCH does not send your VA password or home address. If VA provides an SSN, only the last four digits are sent.
-              </p>
-            </div>
-          </div>
-
-          <p
-            v-else-if="hasRatingsData && !hasProfilePreviewData"
-            class="rounded-md border border-dashed border-warning/40 bg-warning/5 px-2.5 py-2 text-xs leading-relaxed text-muted"
-          >
-            Name, DOB, phone, and service history need a live VA.gov sign-in. Open VA.gov in this browser, then tap refresh above.
-          </p>
-
-          <label class="flex items-start gap-2.5 rounded-md border border-default/70 bg-default/40 p-2.5">
-            <input
-              v-model="importConsent"
-              type="checkbox"
-              class="mt-1 size-4 rounded border-default accent-primary"
-            >
-            <span class="text-sm leading-relaxed text-muted">
-              I approve sending the data listed above to my signed-in VCH account.
-            </span>
-          </label>
-
-          <div
-            v-if="importSuccess || importError || !hubCanImport"
-            class="space-y-2"
-          >
-            <p
-              v-if="importSuccess"
-              class="rounded-md border border-primary/30 bg-primary/10 px-2.5 py-2 text-sm leading-relaxed text-primary"
-            >
-              {{ importSuccess }}
-            </p>
-            <p
-              v-if="importError"
-              class="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-sm leading-relaxed text-red-500"
-            >
-              {{ importError }}
-            </p>
-            <p
-              v-if="!hubCanImport && !importError"
-              class="rounded-md border border-warning/30 bg-warning/10 px-2.5 py-2 text-sm leading-relaxed text-warning"
-            >
-              Sign in at veteranscentralhub.com in this browser to save this data to your account.
-            </p>
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <UButton
-              block
-              size="md"
-              color="primary"
-              leading-icon="i-lucide-cloud-upload"
-              :disabled="!importConsent || !hubCanImport"
-              :loading="importBusy"
-              label="Save to my VCH account"
-              @click="populateClaimBuilderSettings"
-            />
-            <UButton
-              v-if="!hubCanImport"
-              block
-              size="md"
-              color="neutral"
-              variant="outline"
-              label="Sign in to Hub"
-              @click="openHubSignIn"
-            />
-            <UButton
-              block
-              size="md"
-              color="neutral"
-              variant="ghost"
-              label="Open ClaimBuilder"
-              @click="openClaimBuilder(false)"
-            />
-          </div>
         </div>
 
         <div v-if="rows.length === 0 && combinedRating == null && isStale" class="space-y-3 rounded-lg border border-dashed border-default p-4 text-center">

@@ -6,11 +6,12 @@ Review VA claims, ratings, and decision letters in a Manifest V3 extension. Opti
 
 VA data access requires the local disclosure and approval before the extension reads your VA.gov session. Claims, ratings, appeals, and selected profile fields are cached locally. VA passwords and session cookies are never sent to VCH. Optional cloud imports read your VCH sign-in cookie to authenticate your approved requests.
 
-- **Claims / Track:** review saved claims and appeals. Enable optional Track sharing in **Privacy**, then approve cloud sync on the VCH Track page.
-- **Ratings:** review rated disabilities behind the existing screen lock and explicitly approve any ratings/profile import. The screen lock is not local encryption.
-- **Letters:** click **Find decision letters**, choose PDFs, check the disclosure, and click **Send selected to VCH**. Finding letters alone sends no PDFs. Confirmed imports appear in the private document library without inventing claim associations. Keep the extension window open until each import is confirmed.
+- **VA Profile (first tab):** review ratings and decision letters together. Find letters, select individual PDFs or **Select all letters**, then review the destination account and the shared **Save VA data to your VCH account** approval. One Save action imports the unlocked ratings/profile and selected PDFs. Locked ratings are excluded. The existing ratings screen lock is not local encryption.
+- **Claims / Track:** review saved claims and appeals. Optional Track sharing is managed in **VA Profile → Data controls**, followed by the VCH Track page's cloud sync confirmation.
 - **Hub:** open related VCH tools and saved items.
-- **Privacy:** revoke cloud access or clear local VA records and permissions. This does not delete records already imported into VCH.
+- **Data controls:** revoke cloud access or clear local VA records and permissions from VA Profile. This does not delete records already imported into VCH.
+- **Notifications:** slide-down notices at the top report user-requested refreshes, saves, partial failures, and permission/data changes. Long saves keep one progress notice visible and replace it with the confirmed result.
+
 
 Sign in on [VA.gov](https://www.va.gov/track-claims/your-claims/) normally in the same browser. The extension uses VA.gov's own authenticated read endpoints, including `/v0/claim_letters` and `/v0/claim_letters/:documentId?document_type=:docType`. Endpoint changes or unavailable VA records can affect results; failures are shown instead of being reported as successful imports.
 
