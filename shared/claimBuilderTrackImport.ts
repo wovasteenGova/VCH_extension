@@ -1,3 +1,4 @@
+import { hasCloudConsent } from './privacyConsent'
 import { readHubAccessToken } from './hubSessionRead'
 import type { ParsedVaAppeal } from './vaAppealParse'
 import type { ParsedVaClaim } from './vaClaimParse'
@@ -22,10 +23,12 @@ export async function importTrackSnapshotToClaimBuilder(input: {
   letters?: TrackLetterUploadPayload[]
   includeLetters?: boolean
 }): Promise<ClaimBuilderTrackImportResult | null> {
+  if (!await hasCloudConsent('track')) throw new Error('Allow Track sync in the extension privacy settings first.')
   const token = await readHubAccessToken()
   if (!token) return null
 
-  const letters = input.letters ?? (input.includeLetters !== false
+  if ((input.letters?.length || input.includeLetters) && !await hasCloudConsent('letters')) throw new Error('Confirm decision-letter import in the Letters tab first.')
+  const letters = input.letters ?? (input.includeLetters === true
     ? await buildDecisionLetterUploadsForTrack({
         claims: input.claims,
         appeals: input.appeals
@@ -35,7 +38,9 @@ export async function importTrackSnapshotToClaimBuilder(input: {
   const base = CLAIMBUILDER_URL.replace(/\/$/, '')
   const response = await fetch(`${base}/api/extension/va-track-import`, {
     method: 'POST',
-    credentials: 'include',
+    credentials: 'omit',
+    redirect: 'error',
+    signal: AbortSignal.timeout(120_000),
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',

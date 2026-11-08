@@ -18,14 +18,26 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Type check
+        run: npm run compile
+
+      - name: Test
+        run: npm test
+
       - name: Build zip
         run: npm run zip
+
+      - name: Verify Web Store package
+        run: npm run verify:package
+
+      - name: Verify release tag
+        run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
 
       - name: Resolve version
         id: version

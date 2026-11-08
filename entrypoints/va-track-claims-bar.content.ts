@@ -1,3 +1,4 @@
+import { hasLocalDataConsent } from '@/shared/privacyConsent'
 import { formatLastSynced, readVaCacheMeta } from '@/shared/vaDeviceCache'
 import {
   EXTENSION_CONTEXT_INVALIDATED_MESSAGE,
@@ -230,6 +231,10 @@ export default defineContentScript({
         if (!contextStale && !isExtensionContextValid()) showStaleExtensionContext()
         return
       }
+      if (!await hasLocalDataConsent()) {
+        detailEl.textContent = 'Open the VCH extension and enable VA data access before syncing.'
+        return
+      }
       syncing = true
       syncBtn.disabled = true
       syncBtn.textContent = '…'
@@ -246,14 +251,9 @@ export default defineContentScript({
           const appealPart = result.appeals
             ? `, ${result.appeals} appeal${result.appeals === 1 ? '' : 's'}`
             : ''
-          const letterPart = result.files
-            ? ` · ${result.files} decision letter${result.files === 1 ? '' : 's'} ready for ClaimBuilder`
-            : ' · 0 decision letters from VA right now'
-          subtitleEl.textContent = `Saved ${claimPart}${appealPart} on this device${letterPart}`
+          subtitleEl.textContent = `Saved ${claimPart}${appealPart} on this device`
           subtitleEl.className = 'subtitle status-ok'
-          detailEl.textContent = result.files
-            ? 'Decision letters stay in the extension until you approve cloud sync on ClaimBuilder Track claims.'
-            : 'Claims and appeals are on this device. Approve Track claims sync on ClaimBuilder to store letters when VA returns them.'
+          detailEl.textContent = 'To send decision PDFs to VCH, open the extension’s Letters tab and select your letters.'
           return
         }
 
@@ -318,10 +318,7 @@ export default defineContentScript({
 
       await applyCollapsed(await readTrackClaimsBarCollapsed())
       await refreshStatusMessage()
-      // Auto-sync once VA finishes loading the authenticated claims shell.
-      window.setTimeout(() => {
-        void runSync()
-      }, 2500)
+      // A page load is not a request to read VA records. Sync requires this button.
     })()
   }
 })

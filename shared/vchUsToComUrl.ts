@@ -3,7 +3,7 @@ const VCH_ROOT_COM = 'veteranscentralhub.com'
 const VCH_CANONICAL_HUB_HOST = `www.${VCH_ROOT_COM}`
 
 function normalizeHostname(value: string) {
-  return String(value || '').trim().toLowerCase().split(':')[0].split('/')[0]
+  return String(value || '').trim().toLowerCase().split(':')[0]?.split('/')[0] ?? ''
 }
 
 function replaceVchRoot(host: string, nextTld: 'com' | 'us') {

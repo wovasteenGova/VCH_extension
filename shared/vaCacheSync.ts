@@ -27,12 +27,10 @@ let inflight: Promise<VaLiveCachePersistResult> | null = null
 const LIVE_CACHE_TIMEOUT_MS = 20000
 
 function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      window.setTimeout(() => reject(new Error(`${label} timed out`)), LIVE_CACHE_TIMEOUT_MS)
-    })
-  ])
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([promise, new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out`)), LIVE_CACHE_TIMEOUT_MS)
+  })]).finally(() => clearTimeout(timer))
 }
 
 async function persistLiveVaCachesOnce(): Promise<VaLiveCachePersistResult> {

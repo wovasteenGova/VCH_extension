@@ -1,64 +1,38 @@
-# Veterans Central Hub Extension
+# VCH Web Extension
 
-**Claim tracker** plus a shortcut to **[Veterans Central Hub](https://veteranscentralhub.com)** and **[ClaimBuilder](https://claimbuilder.veteranscentralhub.com)**.
+Review VA claims, ratings, and decision letters in a Manifest V3 extension. Optional imports send approved information to your private VCH account. Not affiliated with or endorsed by the U.S. Department of Veterans Affairs.
 
-Built with [WXT](https://wxt.dev) (Manifest V3) and [Nuxt UI v4](https://ui.nuxt.com).
+## Privacy and permissions
 
-## What it does
+VA data access requires the local disclosure and approval before the extension reads your VA.gov session. Claims, ratings, appeals, and selected profile fields are cached locally. VA passwords and session cookies are never sent to VCH. Optional cloud imports read your VCH sign-in cookie to authenticate your approved requests.
 
-- **Claims tab (default):** Lists your VA benefits claims via `https://api.va.gov/v0/benefits_claims` using your existing VA.gov browser session
-- **Ratings tab:** Rated disabilities from `api.va.gov/v0/rated_disabilities`
-- **Appeals tab:** Appeals from `api.va.gov/v0/appeals`
-- **Hub tab:** Quick links to VCH and ClaimBuilder
+- **Claims / Track:** review saved claims and appeals. Enable optional Track sharing in **Privacy**, then approve cloud sync on the VCH Track page.
+- **Ratings:** review rated disabilities behind the existing screen lock and explicitly approve any ratings/profile import. The screen lock is not local encryption.
+- **Letters:** click **Find decision letters**, choose PDFs, check the disclosure, and click **Send selected to VCH**. Finding letters alone sends no PDFs. Confirmed imports appear in the private document library without inventing claim associations. Keep the extension window open until each import is confirmed.
+- **Hub:** open related VCH tools and saved items.
+- **Privacy:** revoke cloud access or clear local VA records and permissions. This does not delete records already imported into VCH.
 
-**You must sign in at VA.gov first** (Login.gov, ID.me, etc.) and ideally open [Manage claims](https://www.va.gov/track-claims/your-claims/) once. The extension does not ask for your VA password and does not send VA data to VCH servers.
+Sign in on [VA.gov](https://www.va.gov/track-claims/your-claims/) normally in the same browser. The extension uses VA.gov's own authenticated read endpoints, including `/v0/claim_letters` and `/v0/claim_letters/:documentId?document_type=:docType`. Endpoint changes or unavailable VA records can affect results; failures are shown instead of being reported as successful imports.
 
-**Canonical install & help URL:** https://veteranscentralhub.com/extension
+Install/help: [VCH extension](https://www.veteranscentralhub.com/extension). Privacy: [VCH privacy policy](https://www.veteranscentralhub.com/privacy#vch-web-extension).
 
-## Install (veterans, no build)
+## Development and verification
 
-**Recommended:** [veteranscentralhub.com/extension](https://www.veteranscentralhub.com/extension) (download hosted on the Hub).
+Use Node 24 and the committed npm lockfile. No API keys or other secrets are needed. Production destinations are fixed in `shared/urls.ts`.
 
-Direct zip: [veteranscentralhub.com/downloads/vch-web-extension-chrome.zip](https://www.veteranscentralhub.com/downloads/vch-web-extension-chrome.zip)
-
-GitHub Releases (optional): [releases/latest](https://github.com/wovasteenGova/VCH_extension/releases/latest)
-
-Step-by-step copy: [docs/INSTALL-CHROME.md](docs/INSTALL-CHROME.md).
-
-## Privacy
-
-- VA API calls run in the extension background with `credentials: include` — session cookies stay between your browser and VA
-- No VA passwords stored
-- Not affiliated with the U.S. Department of Veterans Affairs
-
-## Maintainer: publish a release zip
-
-Bump `version` in `package.json`, commit, then tag and push (GitHub Actions builds and attaches the zip):
-
-```bash
-git tag v0.1.18
-git push origin v0.1.18
+```sh
+npm ci
+npm run compile
+npm test
+npm run zip
+npm run verify:package
+npm audit
 ```
 
-Local build (optional):
+`npm run dev` starts WXT development mode. Production builds are in `.output/chrome-mv3`; the Web Store ZIP is `.output/vch-extension-<version>-chrome.zip`. Load the production directory unpacked for acceptance testing. Displayed version comes from `package.json`.
 
-```bash
-cp .env.example .env
-npm install
-npm run build   # → .output/chrome-mv3
-npm run zip     # → .output/vch-extension-<version>-chrome.zip
-```
+Pull requests and master run type checks, tests, and package verification. Version tags create a GitHub review release after those checks; they do not submit to the Chrome Web Store. The release tag must match `package.json`.
 
-For development, `npm run dev` loads `.output/chrome-mv3-dev` (requires the dev server running).
+## Web Store review
 
-## Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Dev build with HMR |
-| `npm run build` | Production build |
-| `npm run zip` | Zip for Chrome Web Store |
-
-## Repo
-
-https://github.com/wovasteenGova/VCH_extension
+[Submission checklist and audit findings](docs/WEBSTORE-REVIEW.md) include permission justifications, live acceptance checks, and remaining listing/privacy work. [Proposed privacy disclosure](docs/PRIVACY-DISCLOSURE.md) must be reviewed against actual VCH server practices and published with the release. A local build and automated tests do not constitute Web Store approval or an authenticated live VA acceptance test.

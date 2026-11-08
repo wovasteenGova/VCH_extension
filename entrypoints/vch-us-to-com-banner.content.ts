@@ -73,7 +73,7 @@ const BANNER_STYLES = `
 
 export default defineContentScript({
   matches: [
-    'https://*.veteranscentralhub.us/*',
+    'https://www.veteranscentralhub.us/*',
     'https://veteranscentralhub.us/*'
   ],
   runAt: 'document_idle',

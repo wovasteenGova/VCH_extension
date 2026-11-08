@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { grantCloudConsent, hasCloudConsent } from '@/shared/privacyConsent'
 import {
   buildClaimBuilderVaImportPayload,
   checkClaimBuilderVaImportSync,
@@ -135,6 +136,8 @@ async function refreshClaimBuilderSyncStatus() {
     return
   }
 
+  if (!await hasCloudConsent('ratings')) return
+  const previousStatus = claimBuilderSyncStatus.value
   const token = ++claimBuilderSyncCheckToken
   claimBuilderSyncStatus.value = 'checking'
 
@@ -142,7 +145,7 @@ async function refreshClaimBuilderSyncStatus() {
   if (token !== claimBuilderSyncCheckToken) return
 
   if (!status.checked) {
-    claimBuilderSyncStatus.value = claimBuilderSyncStatus.value === 'synced'
+    claimBuilderSyncStatus.value = previousStatus === 'synced'
       ? 'synced'
       : 'idle'
     return
@@ -332,6 +335,7 @@ async function populateClaimBuilderSettings() {
       throw new Error(`Sign in at veteranscentralhub.com in this browser, then try again.`)
     }
 
+    await grantCloudConsent('ratings')
     const userResponse = await refreshVaProfileForImport()
     const profile = userResponse
 
@@ -396,6 +400,16 @@ watch(
 )
 
 onMounted(async () => {
+  const onStorage = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
+    if (area === 'local' && changes['vch-va-device-cache-v1'] && !changes['vch-va-device-cache-v1']!.newValue) {
+      lockRatings()
+      clearRatingsDisplay()
+      importProfilePreview.value = null
+      importConsent.value = false
+    }
+  }
+  browser.storage.onChanged.addListener(onStorage)
+  onUnmounted(() => browser.storage.onChanged.removeListener(onStorage))
   await Promise.all([init(), refreshHubSession(), refreshRatingsGate()])
 })
 

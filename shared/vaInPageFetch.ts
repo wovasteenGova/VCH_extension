@@ -1,83 +1,20 @@
 import type { VaFetchResponse } from './messaging'
-import { parseVaResponse, VA_FETCH_HEADERS } from './vaGovTabFetch'
+import { parseVaResponse } from './vaGovTabFetch'
+import { requestVa } from './vaRequest'
+import { hasLocalDataConsent } from './privacyConsent'
 
 export function isVaGovPageContext() {
-  if (typeof window === 'undefined') return false
-  return /va\.gov$/i.test(window.location.hostname)
+  return typeof window !== 'undefined' && ['https://www.va.gov', 'https://va.gov'].includes(window.location.origin)
 }
 
-function pageReferrer() {
-  if (typeof window === 'undefined') return 'https://www.va.gov/track-claims/your-claims/'
-  return `${window.location.origin}${window.location.pathname}`
+export async function fetchVaJsonInPage(url: string): Promise<VaFetchResponse> {
+  if (!await hasLocalDataConsent()) return { ok: false, status: 0, error: 'Enable VA data access in the VCH extension first.' }
+  const result = await requestVa(url)
+  return result.text !== undefined ? parseVaResponse(result.status, result.text) : { ok: false, status: result.status, error: result.error ?? 'Could not reach VA.gov.' }
 }
 
-export async function fetchVaJsonInPage(
-  url: string,
-  options?: {
-    method?: string
-    body?: string
-    headers?: Record<string, string>
-  }
-): Promise<VaFetchResponse> {
-  try {
-    const response = await fetch(url, {
-      method: options?.method ?? 'GET',
-      credentials: 'include',
-      headers: {
-        ...VA_FETCH_HEADERS,
-        ...(options?.headers ?? {})
-      },
-      body: options?.body,
-      referrer: pageReferrer()
-    })
-    const text = await response.text()
-    return parseVaResponse(response.status, text)
-  } catch (error) {
-    return {
-      ok: false,
-      status: 0,
-      error: error instanceof Error ? error.message : 'Network error talking to VA API'
-    }
-  }
-}
-
-export async function fetchVaBinaryInPage(
-  url: string,
-  options?: { method?: string, headers?: Record<string, string>, body?: string }
-): Promise<{ ok: boolean, status: number, base64: string, error?: string }> {
-  try {
-    const response = await fetch(url, {
-      method: options?.method ?? 'GET',
-      credentials: 'include',
-      headers: {
-        Accept: 'application/pdf,application/octet-stream,*/*',
-        ...(options?.headers ?? {})
-      },
-      body: options?.body,
-      referrer: pageReferrer()
-    })
-    const buffer = await response.arrayBuffer()
-    const bytes = new Uint8Array(buffer)
-    let binary = ''
-    for (let i = 0; i < bytes.length; i += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-    }
-    const base64 = binary ? btoa(binary) : ''
-    if (response.ok && base64) {
-      return { ok: true, status: response.status, base64 }
-    }
-    return {
-      ok: false,
-      status: response.status,
-      base64: '',
-      error: `VA download returned ${response.status}`
-    }
-  } catch (error) {
-    return {
-      ok: false,
-      status: 0,
-      base64: '',
-      error: error instanceof Error ? error.message : 'Fetch failed'
-    }
-  }
+export async function fetchVaBinaryInPage(url: string) {
+  if (!await hasLocalDataConsent()) return { ok: false, status: 0, base64: '', error: 'Enable VA data access in the VCH extension first.' }
+  const result = await requestVa(url, true)
+  return { ...result, base64: result.base64 ?? '' }
 }

@@ -1,11 +1,11 @@
 {
   "name": "vch-extension",
   "private": true,
-  "version": "0.1.30",
+  "version": "0.1.31",
   "description": "VCH Web Extension: VA.gov tools plus Veterans Central Hub and ClaimBuilder shortcuts",
   "type": "module",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "dev": "wxt",
@@ -14,22 +14,28 @@
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
-    "compile": "vue-tsc --noEmit",
-    "postinstall": "wxt prepare"
+    "compile": "wxt prepare && vue-tsc --noEmit",
+    "postinstall": "wxt prepare",
+    "test": "vitest run",
+    "verify:package": "node scripts/verify-package.mjs"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.114",
-    "@nuxt/ui": "^4.11.0",
-    "@vueuse/core": "^14.4.0",
-    "vue": "^3.5.33"
+    "@iconify-json/lucide": "1.2.129",
+    "@nuxt/ui": "4.11.0",
+    "@vueuse/core": "14.4.0",
+    "vue": "3.5.42"
   },
   "devDependencies": {
-    "@types/chrome": "^0.1.40",
-    "@wxt-dev/module-vue": "^1.0.3",
-    "tailwindcss": "^4.3.3",
-    "typescript": "^6.0.3",
-    "vue-tsc": "^3.3.5",
-    "wxt": "^0.20.25"
+    "@types/chrome": "0.1.43",
+    "@wxt-dev/module-vue": "1.0.3",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3",
+    "vue-tsc": "3.3.11",
+    "wxt": "0.21.5",
+    "vitest": "4.1.12"
   },
-  "packageManager": "pnpm@11.9.0"
+  "packageManager": "npm@11.9.0",
+  "overrides": {
+    "esbuild": "0.28.1"
+  }
 }

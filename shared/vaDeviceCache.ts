@@ -1,3 +1,5 @@
+import { hasLocalDataConsent, revokeCloudConsent } from './privacyConsent'
+import { currentVaCacheEpoch } from './vaAccount'
 import type { ParsedVaAppeal } from './vaAppealParse'
 import { mergeParsedClaims, type ParsedVaClaim } from './vaClaimParse'
 import type { ParsedVaRating } from './vaRatingParse'
@@ -5,6 +7,7 @@ import type { ParsedVaUserProfileForImport } from './vaUserProfileParse'
 import { mergeVaUserProfileImports } from './vaUserProfileParse'
 
 export const VA_DEVICE_CACHE_STORAGE_KEY = 'vch-va-device-cache-v1'
+export const VA_CACHE_OWNER_KEY = 'vch-va-cache-owner-v1'
 
 const CACHE_KEY = VA_DEVICE_CACHE_STORAGE_KEY
 
@@ -63,7 +66,7 @@ function storageSet(cache: VaDeviceCache): Promise<boolean> {
 }
 
 export async function readVaDeviceCache(): Promise<VaDeviceCache> {
-  return storageGet()
+  return await hasLocalDataConsent() ? storageGet() : { ...EMPTY_CACHE }
 }
 
 export type VaCacheMeta = {
@@ -99,7 +102,7 @@ export function cacheMetaFromDevice(cache: VaDeviceCache): VaCacheMeta {
 }
 
 export async function readVaCacheMeta(): Promise<VaCacheMeta> {
-  return cacheMetaFromDevice(await storageGet())
+  return cacheMetaFromDevice(await readVaDeviceCache())
 }
 
 /** Header chip text: say what is actually saved, not a blanket "everything is cached". */
@@ -124,7 +127,7 @@ export function describeSavedVaCache(meta: VaCacheMeta) {
     : `Saved on this device: ${list}. Sign in at VA.gov for the latest.`
 
   if (parts.length === 1) {
-    const only = parts[0]
+    const only = parts[0]!
     return {
       label: `${only.charAt(0).toUpperCase()}${only.slice(1)} saved`,
       title
@@ -134,60 +137,68 @@ export function describeSavedVaCache(meta: VaCacheMeta) {
   return { label: 'VA data saved', title }
 }
 
-async function patchCache(patch: Partial<VaDeviceCache>) {
-  const current = await storageGet()
-  await storageSet({ ...current, ...patch })
+export const VA_CACHE_WRITE = 'VCH_VA_CACHE_WRITE'
+type CacheMutation = { field: 'claims' | 'appeals' | 'ratings' | 'profile' | 'meta', value: unknown, ownerEpoch?: string | null }
+let writes: Promise<unknown> = Promise.resolve()
+
+export async function checkVaCacheEpoch(epoch: unknown) {
+  const owner = (await browser.storage.local.get(VA_CACHE_OWNER_KEY))[VA_CACHE_OWNER_KEY] as { epoch?: string } | undefined
+  return typeof epoch === 'string' && owner?.epoch === epoch
+}
+
+export function establishVaCacheOwner(accountId: string): Promise<string | null> {
+  const next = writes.then(async () => {
+    if (!await hasLocalDataConsent() || !/^[a-z0-9-]{8,100}$/i.test(accountId)) return null
+    const stored = await browser.storage.local.get([VA_CACHE_OWNER_KEY, CACHE_KEY])
+    const owner = stored[VA_CACHE_OWNER_KEY] as { accountId?: string, epoch?: string } | undefined
+    if (owner?.accountId === accountId && typeof owner.epoch === 'string') return owner.epoch
+    if (owner || stored[CACHE_KEY]) await revokeCloudConsent()
+    await browser.storage.local.remove(CACHE_KEY)
+    const epoch = crypto.randomUUID()
+    await browser.storage.local.set({ [VA_CACHE_OWNER_KEY]: { accountId, epoch } })
+    return epoch
+  }).catch(() => null)
+  writes = next
+  return next
+}
+
+/** All contexts send mutations here in the worker, preventing lost concurrent writes. */
+export function applyVaCacheMutation(mutation: CacheMutation): Promise<boolean> {
+  const next = writes.then(async () => {
+    if (!await hasLocalDataConsent() || !await checkVaCacheEpoch(mutation.ownerEpoch)) return false
+    const current = await storageGet()
+    const { field, value } = mutation
+    let patch: Partial<VaDeviceCache>
+    if (field === 'claims' && Array.isArray(value)) patch = { claims: mergeParsedClaims(current.claims, value) }
+    else if (field === 'appeals' && Array.isArray(value)) patch = { appeals: value }
+    else if (field === 'ratings' && value && typeof value === 'object' && Array.isArray((value as VaDeviceRatingsCache).rows)) patch = { ratings: value as VaDeviceRatingsCache }
+    else if (field === 'profile' && value && typeof value === 'object') patch = { profile: mergeVaUserProfileImports(current.profile, value as ParsedVaUserProfileForImport) }
+    else if (field === 'meta' && value && typeof value === 'object') {
+      const label = (value as { vaLabel?: unknown }).vaLabel
+      patch = typeof label === 'string' || label === null ? { vaLabel: label } : {}
+    } else return false
+    // Re-check immediately before writing in case the user revoked access during a read.
+    if (!await hasLocalDataConsent()) return false
+    return storageSet({ ...current, ...patch, lastSyncedAt: new Date().toISOString() })
+  }).catch(() => false)
+  writes = next
+  return next
+}
+
+async function mutateCache(mutation: CacheMutation): Promise<boolean> {
+  mutation.ownerEpoch = currentVaCacheEpoch()
+  if (typeof window === 'undefined') return applyVaCacheMutation(mutation)
+  try { return (await browser.runtime.sendMessage({ type: VA_CACHE_WRITE, mutation }))?.ok === true }
+  catch { return false }
 }
 
 export async function touchVaCacheSync(meta?: { vaLabel?: string | null }) {
-  await patchCache({
-    lastSyncedAt: new Date().toISOString(),
-    ...(meta?.vaLabel !== undefined ? { vaLabel: meta.vaLabel } : {})
-  })
+  await mutateCache({ field: 'meta', value: meta ?? {} })
 }
-
-export async function saveVaClaimsCache(claims: ParsedVaClaim[]): Promise<boolean> {
-  const current = await storageGet()
-  if (claims.length === 0 && current.claims.length > 0) return true
-  return storageSet({
-    ...current,
-    claims: mergeParsedClaims(current.claims, claims),
-    lastSyncedAt: new Date().toISOString()
-  })
-}
-
-export async function saveVaAppealsCache(appeals: ParsedVaAppeal[]): Promise<boolean> {
-  const current = await storageGet()
-  if (appeals.length === 0 && current.appeals.length > 0) return true
-  return storageSet({
-    ...current,
-    appeals,
-    lastSyncedAt: new Date().toISOString()
-  })
-}
-
-export async function saveVaRatingsCache(ratings: VaDeviceRatingsCache): Promise<boolean> {
-  const current = await storageGet()
-  const incomingEmpty = !ratings.rows.length && ratings.combinedRating == null
-  const currentHas = Boolean(current.ratings && (current.ratings.rows.length || current.ratings.combinedRating != null))
-  if (incomingEmpty && currentHas) return true
-  return storageSet({
-    ...current,
-    ratings,
-    lastSyncedAt: new Date().toISOString()
-  })
-}
-
-export async function saveVaProfileCache(profile: ParsedVaUserProfileForImport) {
-  const current = await storageGet()
-  const merged = mergeVaUserProfileImports(current.profile, profile)
-  if (!merged) return
-  await storageSet({
-    ...current,
-    profile: merged,
-    lastSyncedAt: new Date().toISOString()
-  })
-}
+export function saveVaClaimsCache(claims: ParsedVaClaim[]) { return mutateCache({ field: 'claims', value: claims }) }
+export function saveVaAppealsCache(appeals: ParsedVaAppeal[]) { return mutateCache({ field: 'appeals', value: appeals }) }
+export function saveVaRatingsCache(ratings: VaDeviceRatingsCache) { return mutateCache({ field: 'ratings', value: ratings }) }
+export async function saveVaProfileCache(profile: ParsedVaUserProfileForImport) { await mutateCache({ field: 'profile', value: profile }) }
 
 export function formatLastSynced(value: string | null | undefined) {
   if (!value) return null
@@ -201,12 +212,12 @@ export function formatLastSynced(value: string | null | undefined) {
 
 export function subscribeVaDeviceCache(listener: (cache: VaDeviceCache) => void) {
   const handler = (
-    changes: Record<string, browser.storage.StorageChange>,
+    changes: Record<string, Browser.storage.StorageChange>,
     areaName: string
   ) => {
     if (areaName !== 'local') return
     const change = changes[CACHE_KEY]
-    if (!change?.newValue) return
+    if (!change) return
     listener(parseVaDeviceCacheRecord(change.newValue))
   }
 
@@ -220,7 +231,7 @@ const FRESH_DEVICE_SYNC_MS = 15 * 60 * 1000
 export function isRecentVaDeviceSync(lastSyncedAt: string | null | undefined, maxAgeMs = FRESH_DEVICE_SYNC_MS) {
   if (!lastSyncedAt) return false
   const parsed = Date.parse(lastSyncedAt)
-  return Number.isFinite(parsed) && Date.now() - parsed <= maxAgeMs
+  return Number.isFinite(parsed) && Date.now() - parsed >= 0 && Date.now() - parsed <= maxAgeMs
 }
 
 export function staleSyncDescription(lastSyncedAt: string | null | undefined) {

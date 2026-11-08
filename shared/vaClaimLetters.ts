@@ -2,16 +2,11 @@ import type { ParsedVaAppeal } from './vaAppealParse'
 import type { ParsedVaClaim } from './vaClaimParse'
 import { vaFetch } from './vaClient'
 import {
-  claimantIdentifierRequestData,
-  fetchVaClaimantIdentifier,
-  type VaClaimantIdentifier
-} from './vaClaimantIdentifier'
-import {
   fetchVaBinaryInPage,
   fetchVaJsonInPage,
   isVaGovPageContext
 } from './vaInPageFetch'
-import { fetchBinaryViaVaGovTab, postJsonViaVaGovTab } from './vaGovTabFetch'
+import { fetchBinaryViaVaGovTab } from './vaGovTabFetch'
 
 export type TrackLetterUploadPayload = {
   entityKind: 'claim' | 'appeal'
@@ -25,7 +20,7 @@ export type TrackLetterUploadPayload = {
 const MAX_LETTERS_PER_SYNC = 10
 const MAX_LETTER_BYTES = 12 * 1024 * 1024
 
-type VaLetterIndexRow = {
+export type VaLetterIndexRow = {
   documentUuid?: string
   documentId?: string
   id?: string
@@ -50,6 +45,8 @@ function readDocumentTypeCode(record: Record<string, unknown>) {
     ?? record.documentType
     ?? record.docType
     ?? record.doc_type
+    ?? record.typeId
+    ?? record.type_id
   if (raw == null) return undefined
   const digits = String(raw).trim()
   return /^\d{1,6}$/.test(digits) ? digits : undefined
@@ -76,6 +73,7 @@ export function rowFromClaimLetterEntry(entry: unknown): VaLetterIndexRow | null
   const letterTypeLabel = readString(merged.letterType, 200)
     ?? readString(merged.letter_type, 200)
     ?? readString(merged.typeDescription, 200)
+    ?? readString(merged.type_description, 200)
     ?? readString(merged.documentTypeLabel, 200)
 
   return normalizeLetterRow({
@@ -234,7 +232,8 @@ function letterRowId(row: VaLetterIndexRow) {
   return row.documentUuid ?? row.documentId ?? row.id ?? null
 }
 
-function isDecisionLetterRow(row: VaLetterIndexRow) {
+export function isDecisionLetterRow(row: VaLetterIndexRow) {
+  if (['27', '184'].includes(row.document_type ?? row.documentType ?? '')) return true
   const label = `${row.documentTypeLabel ?? ''} ${row.documentType ?? ''} ${row.typeDescription ?? ''} ${row.subject ?? ''}`.toLowerCase()
   if (!label.trim()) return true
   return /decision|rating|claim letter|notification|denial|grant|benefit/.test(label)
@@ -265,39 +264,11 @@ function resolveEntityForLetter(
     }
   }
 
-  const decidedClaim = claims.find(claim =>
-    claim.decisionLetterSent || claim.status === 'COMPLETE' || Boolean(claim.closeDate)
-  )
-  if (decidedClaim && claims.length === 1) {
-    return { entityKind: 'claim', entityId: decidedClaim.id, entityTitle: decidedClaim.title }
-  }
-  if (decidedClaim) {
-    return { entityKind: 'claim', entityId: decidedClaim.id, entityTitle: decidedClaim.title }
-  }
-
-  const decidedAppeal = appeals.find(appeal => !appeal.active)
-  if (decidedAppeal && appeals.length === 1) {
-    return { entityKind: 'appeal', entityId: decidedAppeal.id, entityTitle: decidedAppeal.title }
-  }
-
-  if (claims.length === 1) {
-    return { entityKind: 'claim', entityId: claims[0]!.id, entityTitle: claims[0]!.title }
-  }
-
+  // VA's index usually has no claim ID. Never guess that all letters belong
+  // to the first completed claim; unlinked letters use the explicit Letters import.
   return null
 }
 
-async function postClaimLetterSearch(body: unknown) {
-  const url = 'https://api.va.gov/services/documents/v1/claim-letters/search'
-  if (isVaGovPageContext()) {
-    return fetchVaJsonInPage(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
-  }
-  return postJsonViaVaGovTab(url, body)
-}
 
 const VA_CLAIM_LETTERS_INDEX = 'https://api.va.gov/v0/claim_letters'
 
@@ -309,15 +280,15 @@ async function fetchClaimLettersIndexPage(page: number) {
   return vaFetch(url)
 }
 
-/** Paginated GET /v0/claim_letters (matches VeteranHQ claim-correspondence-v1). */
-async function listLegacyClaimLettersPaginated(): Promise<VaLetterIndexRow[]> {
+/** Paginated GET /v0/claim_letters (same index used by VA.gov). */
+export async function listVaDecisionLetters(): Promise<VaLetterIndexRow[]> {
   const all: VaLetterIndexRow[] = []
   const seen = new Set<string>()
   let totalPages = 1
 
   for (let page = 1; page <= totalPages && page <= 100; page++) {
     const res = await fetchClaimLettersIndexPage(page)
-    if (!res.ok) break
+    if (!res.ok) throw new Error(res.error)
 
     totalPages = claimLettersTotalPages(res.data)
     const rows = unwrapLetterRows(res.data).filter(isDecisionLetterRow)
@@ -334,81 +305,15 @@ async function listLegacyClaimLettersPaginated(): Promise<VaLetterIndexRow[]> {
   return all
 }
 
-async function listClaimLettersFromVa(
-  identifier: VaClaimantIdentifier | null
-): Promise<VaLetterIndexRow[]> {
-  const searchData = identifier ? claimantIdentifierRequestData(identifier) : null
-
-  const legacyRows = await listLegacyClaimLettersPaginated()
-  if (legacyRows.length) return legacyRows
-
-  if (searchData && (searchData.fileNumber || searchData.participantId != null)) {
-    const searchRes = await postClaimLetterSearch({ data: searchData })
-    if (searchRes?.ok) {
-      const rows = unwrapLetterRows(searchRes.data).filter(isDecisionLetterRow)
-      if (rows.length) return rows
-    }
-  }
-
-  if (searchData && (searchData.fileNumber || searchData.participantId != null)) {
-    const retry = await postClaimLetterSearch({ data: searchData })
-    if (retry?.ok) {
-      return unwrapLetterRows(retry.data).filter(isDecisionLetterRow)
-    }
-  }
-
-  return []
-}
-
-async function downloadLetterBase64(
-  row: VaLetterIndexRow,
-  identifier: VaClaimantIdentifier | null
-): Promise<string | null> {
-  const documentUuid = letterRowId(row)
-  if (!documentUuid) return null
-
-  const idData = identifier ? claimantIdentifierRequestData(identifier) : {}
-
-  const downloadModern = async () => {
-    const url = 'https://api.va.gov/services/documents/v1/claim-letters/download'
-    const body = JSON.stringify({ data: { documentUuid, ...idData } })
-    const headers = { 'Content-Type': 'application/json', Accept: 'application/octet-stream' }
-    if (isVaGovPageContext()) {
-      return fetchVaBinaryInPage(url, { method: 'POST', headers, body })
-    }
-    return fetchBinaryViaVaGovTab(url, { method: 'POST', headers, body })
-  }
-
-  const downloadLegacy = async () => {
-    const docType = row.document_type
-      ?? readDocumentTypeCode(row as unknown as Record<string, unknown>)
-      ?? row.documentType
-    const typeQuery = docType && /^\d{1,6}$/.test(String(docType))
-      ? `?document_type=${encodeURIComponent(String(docType))}`
-      : ''
-    const legacyUrl = `${VA_CLAIM_LETTERS_INDEX}/${encodeURIComponent(documentUuid)}${typeQuery}`
-    if (isVaGovPageContext()) {
-      return fetchVaBinaryInPage(legacyUrl)
-    }
-    return fetchBinaryViaVaGovTab(legacyUrl)
-  }
-
-  if (row.downloadUrl && row.downloadUrl.startsWith('https://api.va.gov/')) {
-    const direct = isVaGovPageContext()
-      ? await fetchVaBinaryInPage(row.downloadUrl)
-      : await fetchBinaryViaVaGovTab(row.downloadUrl)
-    if (direct?.ok && direct.base64) return direct.base64
-  }
-
-  if (idData.fileNumber || idData.participantId != null) {
-    const modern = await downloadModern()
-    if (modern?.ok && modern.base64) return modern.base64
-  }
-
-  const legacy = await downloadLegacy()
-  if (legacy?.ok && legacy.base64) return legacy.base64
-
-  return null
+export async function downloadVaDecisionLetter(row: VaLetterIndexRow): Promise<string> {
+  const documentId = letterRowId(row)
+  const docType = row.document_type ?? row.documentType
+  if (!documentId || !docType || !/^\d{1,6}$/.test(docType)) throw new Error('VA did not provide a downloadable document ID and type.')
+  // This is the same authenticated endpoint used by VA.gov's letter download UI.
+  const url = `${VA_CLAIM_LETTERS_INDEX}/${encodeURIComponent(documentId)}?document_type=${encodeURIComponent(docType)}`
+  const result = isVaGovPageContext() ? await fetchVaBinaryInPage(url) : await fetchBinaryViaVaGovTab(url)
+  if (!result?.ok || !result.base64) throw new Error(result?.error ?? 'Open VA.gov, sign in, and try downloading this letter again.')
+  return result.base64
 }
 
 function base64ByteLength(base64: string) {
@@ -424,8 +329,7 @@ export async function buildDecisionLetterUploadsForTrack(input: {
   claims: ParsedVaClaim[]
   appeals: ParsedVaAppeal[]
 }): Promise<TrackLetterUploadPayload[]> {
-  const identifier = await fetchVaClaimantIdentifier(input.claims)
-  const rows = await listClaimLettersFromVa(identifier)
+  const rows = await listVaDecisionLetters()
   if (!rows.length) return []
 
   const uploads: TrackLetterUploadPayload[] = []
@@ -441,7 +345,7 @@ export async function buildDecisionLetterUploadsForTrack(input: {
     if (seen.has(dedupeKey)) continue
     seen.add(dedupeKey)
 
-    const contentBase64 = await downloadLetterBase64(row, identifier)
+    const contentBase64 = await downloadVaDecisionLetter(row).catch(() => null)
     if (!contentBase64) continue
     if (base64ByteLength(contentBase64) > MAX_LETTER_BYTES) continue
 

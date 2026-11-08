@@ -13,7 +13,7 @@ function yearFromDate(raw: unknown): number | null {
   if (!text) return null
   const match = text.match(/^(\d{4})/)
   if (!match) return null
-  const year = Number.parseInt(match[1], 10)
+  const year = Number.parseInt(match[1]!, 10)
   return Number.isFinite(year) ? year : null
 }
 

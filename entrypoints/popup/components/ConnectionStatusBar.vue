@@ -172,15 +172,17 @@ function applyMeta(meta: VaCacheMeta) {
 
 async function refresh() {
   loading.value = true
-  const [hubState, vaState, meta] = await Promise.all([
-    probeHubSession(),
-    probeVaSession(),
-    readVaCacheMeta()
-  ])
-  hub.value = hubState
-  va.value = vaState
-  applyMeta(meta)
-  loading.value = false
+  try {
+    const [hubState, vaState, meta] = await Promise.all([
+      probeHubSession(), probeVaSession(), readVaCacheMeta()
+    ])
+    hub.value = hubState
+    va.value = vaState
+    applyMeta(meta)
+  } catch {
+    hub.value = { connected: false, label: 'Check Hub sign-in' }
+    va.value = { connected: false, label: 'Could not check VA.gov' }
+  } finally { loading.value = false }
   void refreshHubBookmarksCount()
 }
 

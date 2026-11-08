@@ -12,15 +12,7 @@ import {
 } from '@/shared/claimBuilderBridge'
 import { type ConnectionState } from '@/shared/connectionStatus'
 import { safeExtensionRuntimeMessage } from '@/shared/extensionContext'
-import { buildDecisionLetterUploadsForTrack } from '@/shared/vaClaimLetters'
-import {
-  readPendingTrackLetters,
-  savePendingTrackLetters
-} from '@/shared/vaPendingLettersCache'
-import {
-  readVaTrackBridgeCachePayload,
-  type VaTrackBridgeCachePayload
-} from '@/shared/vaTrackBridgeCache'
+import type { VaTrackBridgeCachePayload } from '@/shared/vaTrackBridgeCache'
 
 const DISCONNECTED_SESSION: ConnectionState = {
   connected: false,
@@ -49,21 +41,19 @@ async function probeVaSessionForBridge(): Promise<ConnectionState> {
 }
 
 async function readTrackCacheForClaimBuilderBridge() {
-  const fromBackground = await safeExtensionRuntimeMessage<VaTrackBridgeCachePayload>({
+  const fromBackground = await safeExtensionRuntimeMessage<VaTrackBridgeCachePayload | { ok: false, error?: string }>({
     type: VCH_PROBE_VA_TRACK_CACHE
   })
   if (fromBackground?.ok === true) {
     return fromBackground
   }
-  return readVaTrackBridgeCachePayload()
+  return { ok: false as const, error: fromBackground && 'error' in fromBackground ? fromBackground.error : 'Open the VCH extension to enable Track sync.', claims: [], appeals: [], deviceLastSyncedAt: null, vaLabel: null }
 }
 
 export default defineContentScript({
   matches: [
     'https://claimbuilder.veteranscentralhub.com/*',
-    'https://*.claimbuilder.veteranscentralhub.com/*',
     'https://claimbuilder.veteranscentralhub.us/*',
-    'https://*.claimbuilder.veteranscentralhub.us/*',
     /* Track claims UI (same app; canonical host is extension.*) */
     'https://extension.veteranscentralhub.com/*',
     'https://www.extension.veteranscentralhub.com/*',
@@ -73,36 +63,25 @@ export default defineContentScript({
   runAt: 'document_idle',
   main() {
     window.addEventListener('message', (event) => {
-      if (event.source !== window) return
+      if (window.top !== window || event.source !== window) return
       if (!isClaimBuilderBridgeOrigin(event.origin)) return
 
       if (isClaimBuilderTrackCacheRequest(event.data)) {
         void (async () => {
           const cache = await readTrackCacheForClaimBuilderBridge()
-          const pendingLetters = await readPendingTrackLetters()
           const response: VchClaimBuilderTrackCacheResponse = {
             source: VCH_EXTENSION_BRIDGE_SOURCE,
             type: VCH_VA_TRACK_CACHE,
             requestId: event.data.requestId,
-            ok: true,
+            ok: cache.ok,
+            ...('error' in cache ? { error: cache.error } : {}),
             claims: cache.claims,
             appeals: cache.appeals,
             deviceLastSyncedAt: cache.deviceLastSyncedAt,
-            vaLabel: cache.vaLabel,
-            ...(pendingLetters.length ? { letters: pendingLetters } : {})
+            vaLabel: cache.vaLabel
           }
           window.postMessage(response, event.origin)
 
-          if (cache.claims.length || cache.appeals.length) {
-            void buildDecisionLetterUploadsForTrack({
-              claims: cache.claims,
-              appeals: cache.appeals
-            }).then((fresh) => {
-              if (fresh.length) void savePendingTrackLetters(fresh)
-            }).catch(() => {
-              /* letters can sync on a later ClaimBuilder refresh */
-            })
-          }
         })()
         return
       }

@@ -2,6 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { rowFromClaimLetterEntry, unwrapLetterRows } from '../shared/vaClaimLetters'
 
 describe('vaClaimLetters helpers', () => {
+  it('parses the snake_case schema verified against the live VA.gov index', () => {
+    const row = rowFromClaimLetterEntry({
+      document_id: '11111111-1111-4111-8111-111111111111',
+      series_id: '11111111-1111-4111-8111-111111111111',
+      type_description: 'Claim decision (or other notification, like Intent to File)',
+      type_id: '184', doc_type: '184', subject: null,
+      received_at: '2026-09-25', mime_type: 'application/pdf', restricted: false
+    })
+    expect(row?.documentUuid).toBe('11111111-1111-4111-8111-111111111111')
+    expect(row?.document_type).toBe('184')
+    expect(row?.documentTypeLabel).toBe('Claim decision (or other notification, like Intent to File)')
+    expect(row?.letterDate).toBe('2026-09-25')
+    expect(row?.claimId).toBeUndefined()
+  })
   it('unwraps JSON:API claim_letters index rows', () => {
     const row = rowFromClaimLetterEntry({
       id: 'letter-uuid',

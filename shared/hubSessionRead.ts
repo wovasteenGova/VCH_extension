@@ -5,6 +5,7 @@ export type HubSessionRead = {
   canImport: boolean
   label: string
   accessToken: string | null
+  accountId: string | null
   hubOrigin: string
 }
 
@@ -52,7 +53,9 @@ function parseSupabaseSessionValue(raw: string): Record<string, unknown> | null 
   const candidates = [trimmed]
   if (trimmed.startsWith('base64-')) {
     try {
-      candidates.push(atob(trimmed.slice('base64-'.length)))
+      const encoded = trimmed.slice('base64-'.length).replace(/-/g, '+').replace(/_/g, '/')
+      const bytes = Uint8Array.from(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')), char => char.charCodeAt(0))
+      candidates.push(new TextDecoder().decode(bytes))
     } catch {
       /* ignore */
     }
@@ -84,15 +87,15 @@ function sessionIsExpired(accessToken: string, expiresAt: number | null) {
 
   const payload = decodeJwtPayload(accessToken)
   const jwtExp = payload && typeof payload.exp === 'number' ? payload.exp : null
-  if (typeof jwtExp === 'number' && jwtExp * 1000 < now) return true
+  if (typeof jwtExp !== 'number' || !Number.isFinite(jwtExp) || jwtExp * 1000 <= now) return true
 
   return false
 }
 
 /** Prefer .com auth cookies when multiple valid sessions exist. */
-export function pickHubAuthCookies(cookies: browser.cookies.Cookie[]) {
+export function pickHubAuthCookies(cookies: Browser.cookies.Cookie[]) {
   const authCookies = cookies.filter(cookie =>
-    /^sb-[\w-]+-auth-token(\.\d+)?$/.test(cookie.name)
+    /^sb-[\w-]+-auth-token(\.\d+)?$/.test(cookie.name) && hubOriginFromCookieDomain(cookie.domain) !== null
   )
 
   const comCookies = authCookies.filter(cookie => cookie.domain.includes('.com'))
@@ -103,11 +106,11 @@ export function pickHubAuthCookies(cookies: browser.cookies.Cookie[]) {
   return pool.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
 }
 
-function groupAuthCookieSets(cookies: browser.cookies.Cookie[]) {
-  const groups = new Map<string, browser.cookies.Cookie[]>()
+function groupAuthCookieSets(cookies: Browser.cookies.Cookie[]) {
+  const groups = new Map<string, Browser.cookies.Cookie[]>()
 
   for (const cookie of cookies) {
-    if (!/^sb-[\w-]+-auth-token(\.\d+)?$/.test(cookie.name)) continue
+    if (!/^sb-[\w-]+-auth-token(\.\d+)?$/.test(cookie.name) || !hubOriginFromCookieDomain(cookie.domain)) continue
     const baseName = cookie.name.replace(/\.\d+$/, '')
     const key = `${cookie.domain}|${baseName}`
     const list = groups.get(key) ?? []
@@ -120,7 +123,7 @@ function groupAuthCookieSets(cookies: browser.cookies.Cookie[]) {
   )
 }
 
-function parseAuthSessionFromCookieSet(cookies: browser.cookies.Cookie[]): ParsedAuthSession | null {
+function parseAuthSessionFromCookieSet(cookies: Browser.cookies.Cookie[]): ParsedAuthSession | null {
   if (!cookies.length) return null
 
   const sessionValue = cookies.map(cookie => cookie.value).join('')
@@ -146,7 +149,7 @@ function parseAuthSessionFromCookieSet(cookies: browser.cookies.Cookie[]): Parse
   }
 }
 
-function pickBestAuthSession(cookies: browser.cookies.Cookie[]): ParsedAuthSession | null {
+function pickBestAuthSession(cookies: Browser.cookies.Cookie[]): ParsedAuthSession | null {
   const candidates = groupAuthCookieSets(cookies)
     .map(parseAuthSessionFromCookieSet)
     .filter((session): session is ParsedAuthSession => session != null)
@@ -167,7 +170,7 @@ export async function readHubAuthCookies() {
   if (!browser.cookies?.getAll) return []
 
   const seen = new Set<string>()
-  const cookies: browser.cookies.Cookie[] = []
+  const cookies: Browser.cookies.Cookie[] = []
   const domains = [
     'veteranscentralhub.com',
     '.veteranscentralhub.com',
@@ -180,7 +183,7 @@ export async function readHubAuthCookies() {
   ]
 
   for (const domain of domains) {
-    const batch = await browser.cookies.getAll({ domain })
+    const batch = await browser.cookies.getAll({ domain }).catch(() => [])
     for (const cookie of batch) {
       const key = `${cookie.name}|${cookie.domain}|${cookie.path}`
       if (seen.has(key)) continue
@@ -198,7 +201,7 @@ export async function readHubSession(): Promise<HubSessionRead> {
 
   if (!session) {
     const hadAuthCookies = cookies.some(cookie =>
-      /^sb-[\w-]+-auth-token(\.\d+)?$/.test(cookie.name)
+      /^sb-[\w-]+-auth-token(\.\d+)?$/.test(cookie.name) && hubOriginFromCookieDomain(cookie.domain) !== null
     )
 
     return {
@@ -206,6 +209,7 @@ export async function readHubSession(): Promise<HubSessionRead> {
       canImport: false,
       label: hadAuthCookies ? 'Hub session expired' : 'Sign in to Hub',
       accessToken: null,
+      accountId: null,
       hubOrigin: DEFAULT_HUB_ORIGIN
     }
   }
@@ -218,6 +222,7 @@ export async function readHubSession(): Promise<HubSessionRead> {
     canImport: true,
     label,
     accessToken: session.accessToken,
+    accountId: typeof jwt?.sub === 'string' ? jwt.sub : null,
     hubOrigin: session.hubOrigin
   }
 }

@@ -9,7 +9,7 @@ export async function readPopupColorTheme(): Promise<ClaimColorThemeId> {
   if (typeof window !== 'undefined') {
     try {
       const stored = window.localStorage.getItem(CLAIM_COLOR_THEME_STORAGE_KEY)
-      if (isClaimColorThemeId(stored)) return stored
+      if (typeof stored === 'string' && isClaimColorThemeId(stored)) return stored
     } catch {
       /* private mode */
     }
@@ -19,7 +19,7 @@ export async function readPopupColorTheme(): Promise<ClaimColorThemeId> {
     try {
       const result = await browser.storage.local.get(CLAIM_COLOR_THEME_STORAGE_KEY)
       const stored = result[CLAIM_COLOR_THEME_STORAGE_KEY]
-      if (isClaimColorThemeId(stored)) return stored
+      if (typeof stored === 'string' && isClaimColorThemeId(stored)) return stored
     } catch {
       /* extension context invalidated */
     }

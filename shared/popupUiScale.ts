@@ -13,7 +13,7 @@ export type PopupUiScalePresetId = (typeof POPUP_UI_SCALE_PRESETS)[number]['id']
 export const DEFAULT_POPUP_UI_SCALE = POPUP_UI_SCALE_PRESETS[1].scale
 
 const SCALE_MIN = POPUP_UI_SCALE_PRESETS[0].scale
-const SCALE_MAX = POPUP_UI_SCALE_PRESETS[POPUP_UI_SCALE_PRESETS.length - 1].scale
+const SCALE_MAX = POPUP_UI_SCALE_PRESETS[POPUP_UI_SCALE_PRESETS.length - 1]!.scale
 
 export function normalizePopupUiScale(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value)

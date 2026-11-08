@@ -31,18 +31,23 @@ export type VchClaimBuilderTrackCacheResponse = {
   type: typeof VCH_VA_TRACK_CACHE
   requestId: string
   ok: boolean
+  error?: string
   claims?: unknown[]
   appeals?: unknown[]
   deviceLastSyncedAt?: string | null
   vaLabel?: string | null
-  /** Ephemeral PDF payloads for this sync only (not stored in extension cache). */
+  /** Legacy PDF payloads accepted by older webapp versions. New imports use Letters. */
   letters?: unknown[]
 }
 
-const CLAIMBUILDER_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)*veteranscentralhub\.(com|us)$/i
+export const CLAIMBUILDER_BRIDGE_ORIGINS = [
+  'https://claimbuilder.veteranscentralhub.com', 'https://claimbuilder.veteranscentralhub.us',
+  'https://extension.veteranscentralhub.com', 'https://www.extension.veteranscentralhub.com',
+  'https://extension.veteranscentralhub.us', 'https://www.extension.veteranscentralhub.us'
+]
 
 export function isClaimBuilderBridgeOrigin(origin: string) {
-  return CLAIMBUILDER_ORIGIN_RE.test(origin)
+  return CLAIMBUILDER_BRIDGE_ORIGINS.includes(origin)
 }
 
 export function isClaimBuilderBridgeRequest(data: unknown): data is VchClaimBuilderBridgeRequest {
@@ -51,7 +56,7 @@ export function isClaimBuilderBridgeRequest(data: unknown): data is VchClaimBuil
   return record.source === VCH_CLAIMBUILDER_PAGE_SOURCE
     && record.type === VCH_PROBE_VA_SESSION
     && typeof record.requestId === 'string'
-    && record.requestId.length > 0
+    && record.requestId.length > 0 && record.requestId.length <= 128
 }
 
 export function isClaimBuilderTrackCacheRequest(data: unknown): data is VchClaimBuilderTrackCacheRequest {
@@ -60,5 +65,5 @@ export function isClaimBuilderTrackCacheRequest(data: unknown): data is VchClaim
   return record.source === VCH_CLAIMBUILDER_PAGE_SOURCE
     && record.type === VCH_PROBE_VA_TRACK_CACHE
     && typeof record.requestId === 'string'
-    && record.requestId.length > 0
+    && record.requestId.length > 0 && record.requestId.length <= 128
 }

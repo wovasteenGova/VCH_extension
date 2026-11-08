@@ -113,6 +113,7 @@ async function bootstrapAppeals() {
 }
 
 function applyIncomingCache(cache: { appeals: ParsedVaAppeal[], lastSyncedAt: string | null }) {
+  rows.value = cache.appeals
   if (cache.appeals.length) applyCache(cache.appeals, cache.lastSyncedAt)
   void refreshMeta()
 }

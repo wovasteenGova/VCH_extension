@@ -14,13 +14,16 @@ export async function markVaTrackClaimsIntent() {
 }
 
 export async function consumeVaTrackClaimsIntent() {
+  if (typeof window !== 'undefined' && ['https://va.gov', 'https://www.va.gov'].includes(window.location.origin)) {
+    return (await browser.runtime.sendMessage({ type: 'VCH_CONSUME_VA_INTENT' }))?.redirect === true
+  }
   const stored = await browser.storage.session.get(INTENT_KEY)
   const record = stored[INTENT_KEY] as VaTrackClaimsIntent | undefined
   if (!record || typeof record.at !== 'number') return false
 
   await browser.storage.session.remove(INTENT_KEY)
 
-  if (Date.now() - record.at > INTENT_TTL_MS) return false
+  if (Date.now() - record.at < 0 || Date.now() - record.at > INTENT_TTL_MS) return false
   return true
 }
 

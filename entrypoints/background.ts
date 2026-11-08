@@ -1,3 +1,8 @@
+import { consumeVaTrackClaimsIntent } from '@/shared/vaSignInNavigation'
+import { applyVaCacheMutation, checkVaCacheEpoch, establishVaCacheOwner, VA_CACHE_WRITE } from '@/shared/vaDeviceCache'
+import { hasCloudConsent, hasLocalDataConsent } from '@/shared/privacyConsent'
+import { isClaimBuilderBridgeOrigin } from '@/shared/claimBuilderBridge'
+
 import {
   VCH_PROBE_VA_SESSION,
   VCH_PROBE_VA_TRACK_CACHE
@@ -8,20 +13,49 @@ import { hubUrl, VCH_EXTENSION_HUB_PATH } from '@/shared/urls'
 
 export default defineBackground(() => {
   browser.runtime.onInstalled.addListener((details) => {
+    // Previous builds kept raw PDFs in local storage without an expiry.
+    void browser.storage.local.remove('vch-va-pending-track-letters-v1')
     if (details.reason === 'install') {
       void browser.tabs.create({ url: hubUrl(VCH_EXTENSION_HUB_PATH) })
     }
   })
 
-  browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (sender.id !== browser.runtime.id) return
+    let origin = ''
+    try { origin = sender.url ? new URL(sender.url).origin : '' } catch { return }
+    const ownPage = sender.url?.startsWith(browser.runtime.getURL('/')) === true
+    const vaPage = ['https://va.gov', 'https://www.va.gov'].includes(origin)
+    const bridgePage = isClaimBuilderBridgeOrigin(origin) && sender.frameId === 0
+    if (message?.type === 'VCH_VA_ACCOUNT' || message?.type === 'VCH_VA_ACCOUNT_CHECK') {
+      if (!ownPage && !vaPage) return
+      if (message.type === 'VCH_VA_ACCOUNT_CHECK') {
+        void checkVaCacheEpoch(message.epoch).then(ok => sendResponse({ ok }))
+      } else {
+        void establishVaCacheOwner(typeof message.accountId === 'string' ? message.accountId : '').then(epoch => sendResponse({ ok: Boolean(epoch), epoch }))
+      }
+      return true
+    }
+    if (message?.type === 'VCH_CONSUME_VA_INTENT') {
+      if (!vaPage || sender.frameId !== 0) return
+      void consumeVaTrackClaimsIntent().then(redirect => sendResponse({ redirect }))
+      return true
+    }
+    if (message?.type === VA_CACHE_WRITE) {
+      if (!ownPage && !vaPage) return
+      void applyVaCacheMutation(message.mutation ?? {}).then(ok => sendResponse({ ok }))
+      return true
+    }
     if (message?.type === 'PING') {
       sendResponse({ ok: true })
       return
     }
 
     if (message?.type === VCH_PROBE_VA_SESSION) {
+      if (!ownPage && !bridgePage) return
       void (async () => {
         try {
+          if (!await hasLocalDataConsent()) { sendResponse({ connected: false, label: 'Enable VA access in the VCH extension' }); return }
           sendResponse(await probeVaSession())
         } catch {
           sendResponse({ connected: false, label: 'Sign in to VA.gov' })
@@ -31,8 +65,10 @@ export default defineBackground(() => {
     }
 
     if (message?.type === VCH_PROBE_VA_TRACK_CACHE) {
+      if (!ownPage && !bridgePage) return
       void (async () => {
         try {
+          if (!await hasCloudConsent('track')) { sendResponse({ ok: false, error: 'Allow Track sync in the extension Privacy settings.' }); return }
           sendResponse(await readVaTrackBridgeCachePayload())
         } catch {
           sendResponse({
@@ -48,6 +84,7 @@ export default defineBackground(() => {
     }
 
     if (message?.type === 'OPEN_EXTENSION_POPUP') {
+      if (!ownPage && !vaPage && !bridgePage) return
       void (async () => {
         try {
           if (browser.action?.openPopup) {

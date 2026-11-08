@@ -7,7 +7,7 @@ import {
 } from '@/shared/popupUiScale'
 
 export function usePopupUiScale() {
-  const scale = ref(DEFAULT_POPUP_UI_SCALE)
+  const scale = ref<number>(DEFAULT_POPUP_UI_SCALE)
   const ready = ref(false)
 
   const activePresetId = computed<PopupUiScalePresetId>(() => {

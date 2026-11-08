@@ -1,44 +1,26 @@
+import { isAllowedVaRequest, requestVa } from './vaRequest'
+import { hasLocalDataConsent } from './privacyConsent'
 import type { VaFetchResponse } from './messaging'
-import { fetchViaVaGovTab, parseVaResponse, VA_FETCH_HEADERS } from './vaGovTabFetch'
+import { fetchViaVaGovTab, parseVaResponse } from './vaGovTabFetch'
 
 async function vaFetchDirect(url: string): Promise<VaFetchResponse> {
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        ...VA_FETCH_HEADERS,
-        Referer: url.includes('benefits_claims') || url.includes('/v0/appeals')
-          ? 'https://www.va.gov/track-claims/your-claims/'
-          : 'https://www.va.gov/'
-      }
-    })
-
-    const text = await response.text()
-    return parseVaResponse(response.status, text)
-  } catch (error) {
-    return {
-      ok: false,
-      status: 0,
-      error: error instanceof Error ? error.message : 'Network error talking to VA API'
-    }
-  }
+  const result = await requestVa(url)
+  return result.text !== undefined ? parseVaResponse(result.status, result.text) : { ok: false, status: result.status, error: result.error ?? 'Could not reach VA.gov.' }
 }
 
 export async function vaFetch(url: string): Promise<VaFetchResponse> {
-  if (!url.startsWith('https://api.va.gov/')) {
+  if (!isAllowedVaRequest(url)) {
     return { ok: false, status: 0, error: 'Only api.va.gov URLs are allowed' }
   }
+
+  if (!await hasLocalDataConsent()) return { ok: false, status: 0, error: 'Open the VCH extension to enable VA data access.' }
 
   // Prefer an open VA.gov tab so session cookies attach. Direct popup fetches
   // often 403 claims/appeals even when ratings work.
   const viaTab = await fetchViaVaGovTab(url)
-  if (viaTab?.ok) return viaTab
-
-  const direct = await vaFetchDirect(url)
-  if (direct.ok) return direct
-
-  return viaTab ?? direct
+  // Do not repeat a timed-out or expired-session request against the same API.
+  // Direct extension fetch is only a fallback when no VA tab is available.
+  return viaTab ?? vaFetchDirect(url)
 }
 
 export async function fetchVaClaimsList() {

@@ -1,3 +1,5 @@
+import { isAllowedVaRequest } from './vaRequest'
+import { adoptVaCacheEpoch } from './vaAccount'
 import { extensionTabsApi } from './extensionTabsApi'
 import type { VaFetchResponse } from './messaging'
 
@@ -17,7 +19,7 @@ function parseVaResponse(status: number, text: string): VaFetchResponse {
     try {
       data = JSON.parse(text)
     } catch {
-      data = { raw: text.slice(0, 500) }
+      return { ok: false, status, error: 'VA did not return valid data. Sign in on VA.gov and try again.' }
     }
   }
 
@@ -64,6 +66,7 @@ async function findVaGovTabId(preferTrackClaims = false): Promise<number | null>
 
 /** Run fetch inside a signed-in VA.gov tab so session cookies attach like the website. */
 export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | null> {
+  if (!isAllowedVaRequest(url)) return { ok: false, status: 0, error: 'This VA request is not allowed.' }
   const tabsApi = extensionTabsApi()
   if (!tabsApi) return null
 
@@ -79,7 +82,8 @@ export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | n
 
     if (!response || typeof response !== 'object') return null
 
-    const record = response as { ok?: boolean, status?: number, text?: string, error?: string }
+    const record = response as { ok?: boolean, status?: number, text?: string, error?: string, ownerEpoch?: string }
+    adoptVaCacheEpoch(record.ownerEpoch)
     if (typeof record.status !== 'number') {
       return {
         ok: false,
@@ -88,36 +92,18 @@ export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | n
       }
     }
 
+    if (record.ok === false && !record.text) return { ok: false, status: record.status, error: record.error ?? 'Could not reach VA.gov.' }
     return parseVaResponse(record.status, typeof record.text === 'string' ? record.text : '')
   } catch {
-    // Content script may not be loaded yet on this tab (open before extension reload).
+    // Tabs opened before installation need the bundled isolated-world proxy.
+    // Never execute remote code or an unrestricted fetch in the website's MAIN world.
     try {
-      const results = await browser.scripting.executeScript({
-        target: { tabId },
-        world: 'MAIN',
-        func: async (fetchUrl: string) => {
-          const res = await fetch(fetchUrl, {
-            method: 'GET',
-            credentials: 'include',
-            headers: {
-              Accept: 'application/json',
-              'X-Key-Inflection': 'camel'
-            }
-          })
-          return {
-            status: res.status,
-            text: await res.text()
-          }
-        },
-        args: [url]
-      })
-
-      const payload = results?.[0]?.result as { status?: number, text?: string } | undefined
-      if (!payload || typeof payload.status !== 'number') return null
-      return parseVaResponse(payload.status, payload.text ?? '')
-    } catch {
-      return null
-    }
+      await browser.scripting.executeScript({ target: { tabId }, files: ['/content-scripts/va-api-proxy.js'] })
+      const result = await tabsApi.sendMessage(tabId, { type: 'VA_API_FETCH', url })
+      adoptVaCacheEpoch(result?.ownerEpoch)
+      if (result?.text !== undefined) return parseVaResponse(result.status, result.text)
+      return { ok: false, status: 0, error: result?.error ?? 'Refresh your VA.gov tab and try again.' }
+    } catch { return { ok: false, status: 0, error: 'Refresh your VA.gov tab and try again.' } }
   }
 }
 
@@ -134,32 +120,18 @@ async function sendVaTabMessage(tabId: number, message: Record<string, unknown>)
     if (!response || typeof response !== 'object') return null
     return response as Record<string, unknown>
   } catch {
-    return null
+    try {
+      await browser.scripting.executeScript({ target: { tabId }, files: ['/content-scripts/va-api-proxy.js'] })
+      return await tabsApi.sendMessage(tabId, message) as Record<string, unknown>
+    } catch { return null }
   }
-}
-
-export async function postJsonViaVaGovTab(url: string, body: unknown): Promise<VaFetchResponse | null> {
-  if (!url.startsWith('https://api.va.gov/')) {
-    return { ok: false, status: 0, error: 'Only api.va.gov URLs are allowed' }
-  }
-
-  const tabId = await findVaGovTabId(true)
-  if (tabId == null) return null
-
-  const record = await sendVaTabMessage(tabId, {
-    type: 'VA_API_POST_JSON',
-    url,
-    body
-  })
-  if (!record || typeof record.status !== 'number') return null
-  return parseVaResponse(record.status, typeof record.text === 'string' ? record.text : '')
 }
 
 export async function fetchBinaryViaVaGovTab(
   url: string,
   options?: { method?: string, headers?: Record<string, string>, body?: string }
 ): Promise<{ ok: boolean, status: number, base64: string, contentType?: string | null, error?: string } | null> {
-  if (!url.startsWith('https://api.va.gov/')) {
+  if (!isAllowedVaRequest(url, options?.method ?? 'GET', true)) {
     return { ok: false, status: 0, base64: '', error: 'Only api.va.gov URLs are allowed' }
   }
 

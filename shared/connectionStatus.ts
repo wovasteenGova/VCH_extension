@@ -2,9 +2,6 @@ import { openVaSignIn as openVaSignInNavigation } from './vaSignInNavigation'
 import { DEFAULT_HUB_ORIGIN, getDetectedHubOrigin, hubUrlOnOrigin, setDetectedHubOrigin } from './hubOrigins'
 import { readHubSession } from './hubSessionRead'
 import {
-  fetchVaAppeals,
-  fetchVaClaimsList,
-  fetchVaRatedDisabilities,
   fetchVaUser
 } from './vaClient'
 
@@ -44,31 +41,21 @@ function readVaProfileName(payload: unknown): string | null {
   return null
 }
 
+let sessionProbe: Promise<ConnectionState> | null = null
+let lastProbe: { at: number, value: ConnectionState } | null = null
 export async function probeVaSession(): Promise<ConnectionState> {
-  // benefits_claims is the strictest: often needs track-claims open on VA.gov first.
-  // Probe lighter endpoints first so the chip is not a false negative.
-  const probes = [
-    fetchVaAppeals,
-    fetchVaRatedDisabilities,
-    fetchVaUser,
-    fetchVaClaimsList
-  ]
-
-  for (const probe of probes) {
-    const response = await probe()
-    if (response.ok) {
-      if (probe === fetchVaUser) {
-        const name = readVaProfileName(response.data)
-        return { connected: true, label: name || 'Active' }
-      }
-      return { connected: true, label: 'Active' }
-    }
-  }
-
-  return {
-    connected: false,
-    label: 'Sign in to VA.gov'
-  }
+  if (lastProbe && Date.now() - lastProbe.at < 10_000) return lastProbe.value
+  if (sessionProbe) return sessionProbe
+  // One session endpoint suffices. Never chain four health-data requests just
+  // to paint a sign-in chip, and share concurrent checks from the popup UI.
+  sessionProbe = fetchVaUser().then(response => {
+    const value = response.ok
+      ? { connected: true, label: readVaProfileName(response.data) ?? 'Active' }
+      : { connected: false, label: 'Sign in to VA.gov' }
+    lastProbe = { at: Date.now(), value }
+    return value
+  }).finally(() => { sessionProbe = null })
+  return sessionProbe
 }
 
 export async function probeHubSession(): Promise<ConnectionState> {

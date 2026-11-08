@@ -63,7 +63,7 @@ function pickImageUrl(item: Record<string, unknown>): string | null {
     const v = item[k]
     if (typeof v === 'string' && v.trim()) {
       const t = v.trim()
-      if (/^https?:\/\//i.test(t) && isPlausibleImageUrl(t)) return t
+      if (/^https:\/\//i.test(t) && isPlausibleImageUrl(t)) return t
     }
   }
   return null
@@ -123,7 +123,7 @@ async function resolveLatestHubTabId(): Promise<number | null> {
   if (!tabs.length) return null
 
   tabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))
-  return tabs[0].id ?? null
+  return tabs[0]?.id ?? null
 }
 
 /**
@@ -141,7 +141,7 @@ export async function fetchHubSavedItemsTotalCount(): Promise<number> {
   try {
     const results = await scripting.executeScript({
       target: { tabId },
-      world: 'MAIN',
+      world: 'ISOLATED',
       func: (key: string) => {
         try {
           const raw = localStorage.getItem(key)
@@ -186,7 +186,7 @@ export async function fetchHubSavedItemBookmarks(max = 500): Promise<HubSavedBoo
 
   const results = await scripting.executeScript({
     target: { tabId },
-    world: 'MAIN',
+    world: 'ISOLATED',
     func: (key: string) => {
       try {
         const raw = localStorage.getItem(key)

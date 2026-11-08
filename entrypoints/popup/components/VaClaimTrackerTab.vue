@@ -237,7 +237,9 @@ function openTrackOnVch() {
 onMounted(() => {
   const stop = subscribeVaDeviceCache((cache) => {
     lastSyncedAt.value = cache.lastSyncedAt
+    claims.value = cache.claims
     if (cache.claims.length) applyCachedClaims(cache.claims)
+    else { expandedId.value = null; loadedDetailIds.value = new Set() }
     void refreshDeviceCacheMeta()
   })
   onUnmounted(stop)
@@ -272,7 +274,7 @@ async function toggleDetail(claimId: string) {
   const index = claims.value.findIndex(claim => claim.id === claimId)
   if (index === -1) return
 
-  claims.value[index] = mergeClaimDetail(claims.value[index], response.data)
+  claims.value[index] = mergeClaimDetail(claims.value[index]!, response.data)
   loadedDetailIds.value.add(claimId)
   await saveVaClaimsCache(claims.value)
 }

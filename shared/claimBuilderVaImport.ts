@@ -1,3 +1,4 @@
+import { hasCloudConsent } from './privacyConsent'
 import { readHubAccessToken } from './hubSessionRead'
 import type { ParsedVaRating } from './vaRatingParse'
 import type { ParsedVaUserProfileForImport } from './vaUserProfileParse'
@@ -54,6 +55,7 @@ export function buildClaimBuilderVaImportPayload(input: {
 export async function importVaRatingsToClaimBuilder(
   payload: ClaimBuilderVaImportPayload
 ): Promise<ClaimBuilderVaImportResult> {
+  if (!await hasCloudConsent('ratings')) throw new Error('Confirm the ratings import before sharing data with VCH.')
   const token = await readHubAccessToken()
   if (!token) {
     throw new Error('Could not read your Hub sign-in from this browser. Open veteranscentralhub.com, sign in, then try again.')
@@ -62,7 +64,9 @@ export async function importVaRatingsToClaimBuilder(
   const base = CLAIMBUILDER_URL.replace(/\/$/, '')
   const response = await fetch(`${base}/api/extension/va-ratings-import`, {
     method: 'POST',
-    credentials: 'include',
+    credentials: 'omit',
+    redirect: 'error',
+    signal: AbortSignal.timeout(30_000),
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -106,6 +110,7 @@ export async function importVaRatingsToClaimBuilder(
 export async function checkClaimBuilderVaImportSync(
   payload: ClaimBuilderVaImportPayload
 ): Promise<ClaimBuilderVaImportSyncStatus> {
+  if (!await hasCloudConsent('ratings')) return { synced: false, importedAt: null, checked: false }
   const token = await readHubAccessToken()
   if (!token) {
     return { synced: false, importedAt: null, checked: false }
@@ -114,7 +119,9 @@ export async function checkClaimBuilderVaImportSync(
   const base = CLAIMBUILDER_URL.replace(/\/$/, '')
   const response = await fetch(`${base}/api/extension/va-ratings-import/status`, {
     method: 'POST',
-    credentials: 'include',
+    credentials: 'omit',
+    redirect: 'error',
+    signal: AbortSignal.timeout(30_000),
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',

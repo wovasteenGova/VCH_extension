@@ -18,7 +18,7 @@ export function markExpandedPopupWindow() {
 
 export async function openExpandedPopupWindow(): Promise<void> {
   if (!browser.runtime?.getURL || !browser.windows?.create) return
-  const url = `${browser.runtime.getURL('popup.html')}?expanded=1`
+  const url = `${browser.runtime.getURL('/popup.html')}?expanded=1`
   await browser.windows.create({
     url,
     type: 'popup',

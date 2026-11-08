@@ -24,7 +24,7 @@ export function normalizeHubOriginToCom(origin: string) {
 
 export function hubOriginFromCookieDomain(domain: string): string | null {
   const normalized = domain.toLowerCase()
-  if (normalized.includes('veteranscentralhub')) {
+  if ((HUB_COOKIE_DOMAINS as readonly string[]).includes(normalized)) {
     return DEFAULT_HUB_ORIGIN
   }
   return null
