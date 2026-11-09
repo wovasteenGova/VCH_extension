@@ -2,7 +2,7 @@
 import { decisionLetterKey as key, fetchVaDecisionLetterIndex, type VaLetterIndexRow } from '@/shared/vaClaimLetters'
 import type { LetterImportOutcome } from '@/shared/vaProfileImport'
 import { VA_CLAIM_LETTERS_PAGE } from '@/shared/vaEndpoints'
-import { readVaDeviceCache, saveVaLettersCache, subscribeVaDeviceCache } from '@/shared/vaDeviceCache'
+import { checkVaCacheEpoch, readVaDeviceCache, saveVaLettersCache, VA_CACHE_OWNER_KEY, VA_DEVICE_CACHE_STORAGE_KEY } from '@/shared/vaDeviceCache'
 
 const props = defineProps<{ active: boolean, busy: boolean, accountId: string | null, importedLetterKeys: string[] }>()
 defineEmits<{ import: [] }>()
@@ -10,7 +10,7 @@ const letters = ref<VaLetterIndexRow[]>([])
 const selected = ref<string[]>([])
 const loading = ref(false)
 const loaded = ref(false)
-const showingSaved = ref(false)
+const listSource = ref<'live' | 'saved' | 'live-only'>('live')
 const error = ref('')
 const outcomes = ref<Record<string, { ok: boolean, message: string }>>({})
 const toast = useToast()
@@ -34,22 +34,23 @@ async function load(automatic = false) {
       const saved = (await readVaDeviceCache()).letters
       if (saved) {
         applyLetters(saved.rows)
-        showingSaved.value = true
+        listSource.value = 'saved'
       }
     }
     const { rows: next, ownerEpoch } = await fetchVaDecisionLetterIndex()
-    if (!ownerEpoch || !await saveVaLettersCache(next, ownerEpoch)) {
-      throw new Error('Could not save the letter list for your VA.gov account. Open VA.gov and refresh the list.')
+    const saved = ownerEpoch ? await saveVaLettersCache(next, ownerEpoch) : false
+    if (ownerEpoch && !await checkVaCacheEpoch(ownerEpoch)) {
+      throw new Error('Your VA.gov account changed. Refresh the letter list and try again.')
     }
     const previousKeys = new Set(letters.value.map(key))
     applyLetters(next)
-    showingSaved.value = false
+    listSource.value = saved ? 'live' : 'live-only'
     if (next.length && (!automatic || next.some(row => !previousKeys.has(key(row))))) {
       toast.add({ title: `${next.length} decision letter${next.length === 1 ? '' : 's'} available`, description: 'Select the letters you want to save to your VCH account.', color: 'success' })
     }
   } catch (caught) {
     if (loaded.value) {
-      showingSaved.value = true
+      if (listSource.value !== 'live-only') listSource.value = 'saved'
       return
     }
     error.value = caught instanceof Error ? caught.message : 'Could not read VA decision letters.'
@@ -58,15 +59,18 @@ async function load(automatic = false) {
 }
 
 onMounted(() => {
-  const stop = subscribeVaDeviceCache(cache => {
-    if (cache.letters) return
+  const onCacheChanged = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
+    if (area !== 'local') return
+    const cache = changes[VA_DEVICE_CACHE_STORAGE_KEY]
+    if (!changes[VA_CACHE_OWNER_KEY] && !(cache && !cache.newValue)) return
     letters.value = []
     selected.value = []
     outcomes.value = {}
     loaded.value = false
-    showingSaved.value = false
-  })
-  onUnmounted(stop)
+    listSource.value = 'live'
+  }
+  browser.storage.onChanged.addListener(onCacheChanged)
+  onUnmounted(() => browser.storage.onChanged.removeListener(onCacheChanged))
 })
 
 watch(() => props.active, (active) => {
@@ -106,7 +110,8 @@ defineExpose({ selectedLetters, recordOutcome })
       </div>
     </div>
     <p v-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
-    <p v-if="showingSaved" class="text-sm text-muted">Showing the saved letter list. Open VA.gov if you need to refresh or sign in before importing.</p>
+    <p v-if="listSource === 'saved'" class="text-sm text-muted">Showing the saved letter list. Open VA.gov if you need to refresh or sign in before importing.</p>
+    <p v-else-if="listSource === 'live-only'" class="text-sm text-muted">You can import these letters now. The list could not be saved for offline use.</p>
     <p v-if="loaded && !letters.length" class="text-sm text-muted">No decision letters in this list. If you expect a letter, check the claim letters page on VA.gov.</p>
     <div v-if="letters.length" class="flex flex-wrap items-center justify-between gap-2">
       <UCheckbox :model-value="selectAllState" :disabled="busy" label="Select all letters" @update:model-value="toggleAll" />
