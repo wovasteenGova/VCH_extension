@@ -1,7 +1,22 @@
 import { CLAIMBUILDER_URL } from './urls'
 import { readHubAccessToken, readHubSession } from './hubSessionRead'
 import { hasCloudConsent } from './privacyConsent'
-import { downloadVaDecisionLetter, type VaLetterIndexRow } from './vaClaimLetters'
+import { decisionLetterKey, downloadVaDecisionLetter, type VaLetterIndexRow } from './vaClaimLetters'
+
+export async function fetchImportedDecisionLetterKeys(accountId: string): Promise<string[]> {
+  const session = await readHubSession()
+  if (!session.accessToken || session.accountId !== accountId) throw new Error('Sign in to check imported letters.')
+  const response = await fetch(`${CLAIMBUILDER_URL}/api/documents/va-decision-letters`, {
+    credentials: 'omit', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8000),
+    headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/json' }
+  })
+  if (!response.ok) throw new Error('Could not check imported letters.')
+  const data = await response.json()
+  if (!Array.isArray(data?.letterKeys) || !data.letterKeys.every((key: unknown) => typeof key === 'string')) {
+    throw new Error('VCH did not return letter import status.')
+  }
+  return data.letterKeys
+}
 
 export function decisionLetterFilename(row: VaLetterIndexRow) {
   const date = (row.letterDate ?? row.documentDate ?? row.receivedAt ?? '').slice(0, 10).replace(/[^0-9-]/g, '')
@@ -24,6 +39,7 @@ export async function sendDecisionLetterToVch(row: VaLetterIndexRow, accountId: 
   form.append('file', new Blob([bytes], { type: 'application/pdf' }), decisionLetterFilename(row))
   form.append('documentTypeHint', 'va_decision')
   form.append('uploadPurpose', 'library')
+  form.append('vaDecisionLetterKey', decisionLetterKey(row))
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 120_000)
   try {

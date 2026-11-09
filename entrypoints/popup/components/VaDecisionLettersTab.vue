@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { decisionLetterKey as key, fetchVaDecisionLetterIndex, type VaLetterIndexRow } from '@/shared/vaClaimLetters'
+import { fetchImportedDecisionLetterKeys } from '@/shared/decisionLetterImport'
 import type { LetterImportOutcome } from '@/shared/vaProfileImport'
 import { VA_CLAIM_LETTERS_PAGE } from '@/shared/vaEndpoints'
 import { checkVaCacheEpoch, readVaDeviceCache, saveVaLettersCache, VA_CACHE_OWNER_KEY, VA_DEVICE_CACHE_STORAGE_KEY } from '@/shared/vaDeviceCache'
@@ -13,10 +14,40 @@ const loaded = ref(false)
 const listSource = ref<'live' | 'saved' | 'live-only'>('live')
 const error = ref('')
 const outcomes = ref<Record<string, { ok: boolean, message: string }>>({})
+const accountImportedKeys = ref<string[]>([])
+const checkingStatus = ref(false)
+const statusUnavailable = ref(false)
 const toast = useToast()
-const imported = computed(() => new Set(props.importedLetterKeys))
-const selectedLetters = computed(() => letters.value.filter(row => selected.value.includes(key(row))))
-const selectAllState = computed(() => selected.value.length === 0 ? false : selected.value.length === letters.value.length ? true : 'indeterminate' as const)
+const imported = computed(() => new Set([
+  ...accountImportedKeys.value,
+  ...Object.keys(outcomes.value).filter(id => outcomes.value[id]?.ok)
+]))
+const localReceipts = computed(() => new Set(props.importedLetterKeys))
+const selectableLetters = computed(() => letters.value.filter(row => !imported.value.has(key(row))))
+const selectedLetters = computed(() => selectableLetters.value.filter(row => selected.value.includes(key(row))))
+const selectAllLabel = computed(() => selectableLetters.value.length < letters.value.length ? 'Select all remaining letters' : 'Select all letters')
+const selectAllState = computed(() => selectedLetters.value.length === 0 ? false : selectedLetters.value.length === selectableLetters.value.length ? true : 'indeterminate' as const)
+
+let statusRequest = 0
+async function refreshImportStatus() {
+  const accountId = props.accountId
+  if (!accountId) return
+  const generation = ++statusRequest
+  checkingStatus.value = true
+  statusUnavailable.value = false
+  try {
+    const keys = await fetchImportedDecisionLetterKeys(accountId)
+    if (generation !== statusRequest) return
+    accountImportedKeys.value = keys
+    const confirmed = new Set(keys)
+    selected.value = selected.value.filter(id => !confirmed.has(id))
+    outcomes.value = Object.fromEntries(Object.entries(outcomes.value).filter(([, outcome]) => !outcome.ok))
+  } catch {
+    if (generation === statusRequest) statusUnavailable.value = true
+  } finally {
+    if (generation === statusRequest) checkingStatus.value = false
+  }
+}
 
 function applyLetters(rows: VaLetterIndexRow[]) {
   const nextKeys = new Set(rows.map(key))
@@ -27,6 +58,7 @@ function applyLetters(rows: VaLetterIndexRow[]) {
 
 async function load(automatic = false) {
   if (loading.value) return
+  if (!automatic) void refreshImportStatus()
   loading.value = true
   error.value = ''
   try {
@@ -78,16 +110,24 @@ watch(() => props.active, (active) => {
 }, { immediate: true })
 
 watch(() => props.accountId, (_, previous) => {
+  statusRequest++
   if (previous) selected.value = []
+  accountImportedKeys.value = []
+  checkingStatus.value = false
+  statusUnavailable.value = false
   outcomes.value = {}
 })
+
+watch([() => props.active, () => props.accountId], ([active]) => {
+  if (active) void refreshImportStatus()
+}, { immediate: true })
 
 function toggle(row: VaLetterIndexRow, checked: boolean | 'indeterminate') {
   selected.value = checked === true ? [...new Set([...selected.value, key(row)])] : selected.value.filter(value => value !== key(row))
 }
 
 function toggleAll(checked: boolean | 'indeterminate') {
-  selected.value = checked === true ? letters.value.map(key) : []
+  selected.value = checked === true ? selectableLetters.value.map(key) : []
 }
 
 function recordOutcome(outcome: LetterImportOutcome) {
@@ -101,26 +141,29 @@ defineExpose({ selectedLetters, recordOutcome })
 <template>
   <section class="space-y-3 py-2" aria-labelledby="letters-heading">
     <h2 id="letters-heading" class="font-semibold text-highlighted">Decision letters</h2>
-    <p class="text-sm text-muted">Choose one letter or select all, then import your selection to your private VCH library.</p>
+    <p class="text-sm text-muted">Letters already in your VCH library are checked off. Select any remaining letters to import.</p>
     <div class="flex flex-wrap gap-2">
       <UButton :loading="loading" :disabled="busy" icon="i-lucide-refresh-cw" @click="load()">{{ loaded ? 'Refresh letters' : 'Find decision letters' }}</UButton>
       <div class="flex items-center gap-2">
-        <UButton v-if="letters.length" color="success" icon="i-lucide-cloud-upload" :disabled="!selected.length || loading || busy" @click="$emit('import')">Import to VCH</UButton>
+        <UButton v-if="letters.length" color="success" icon="i-lucide-cloud-upload" :disabled="!selectedLetters.length || loading || checkingStatus || busy" @click="$emit('import')">Import to VCH</UButton>
         <UButton variant="outline" :disabled="busy" :to="VA_CLAIM_LETTERS_PAGE" target="_blank" rel="noopener noreferrer">Open VA.gov</UButton>
       </div>
     </div>
     <p v-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
+    <p v-if="checkingStatus" role="status" class="text-sm text-muted">Checking your VCH library…</p>
+    <p v-else-if="statusUnavailable" class="text-sm text-muted">Could not check your VCH library. Refresh letters to try again.</p>
     <p v-if="listSource === 'saved'" class="text-sm text-muted">Showing the saved letter list. Open VA.gov if you need to refresh or sign in before importing.</p>
     <p v-else-if="listSource === 'live-only'" class="text-sm text-muted">You can import these letters now. The list could not be saved for offline use.</p>
     <p v-if="loaded && !letters.length" class="text-sm text-muted">No decision letters in this list. If you expect a letter, check the claim letters page on VA.gov.</p>
-    <div v-if="letters.length" class="flex flex-wrap items-center justify-between gap-2">
-      <UCheckbox :model-value="selectAllState" :disabled="busy" label="Select all letters" @update:model-value="toggleAll" />
-      <p class="text-sm text-muted">{{ selected.length }} of {{ letters.length }} selected</p>
+    <div v-if="selectableLetters.length" class="flex flex-wrap items-center justify-between gap-2">
+      <UCheckbox :model-value="selectAllState" :disabled="busy || checkingStatus" :label="selectAllLabel" :aria-label="selectAllLabel" @update:model-value="toggleAll" />
+      <p class="text-sm text-muted">{{ selectedLetters.length }} of {{ selectableLetters.length }} selected</p>
     </div>
     <div v-for="row in letters" :key="key(row)" class="space-y-2 rounded-lg border border-default p-3">
       <div class="flex flex-wrap items-start justify-between gap-2">
-        <UCheckbox :model-value="selected.includes(key(row))" :disabled="busy" :label="row.documentTypeLabel || (row.document_type === '27' ? 'Appeal decision' : 'Claim decision or notification')" @update:model-value="toggle(row, $event)" />
-        <UBadge v-if="imported.has(key(row)) || outcomes[key(row)]?.ok" color="success" variant="soft" icon="i-lucide-circle-check" title="VCH confirmed an import from this device">Imported</UBadge>
+        <UCheckbox :model-value="imported.has(key(row)) || selected.includes(key(row))" :disabled="busy || checkingStatus || imported.has(key(row))" :label="row.documentTypeLabel || (row.document_type === '27' ? 'Appeal decision' : 'Claim decision or notification')" @update:model-value="toggle(row, $event)" />
+        <UBadge v-if="imported.has(key(row))" color="success" variant="soft" icon="i-lucide-circle-check">On VCH</UBadge>
+        <UBadge v-else-if="statusUnavailable && localReceipts.has(key(row))" color="neutral" variant="soft">Imported on this device</UBadge>
       </div>
       <p class="pl-6 text-xs text-muted">{{ row.letterDate?.slice(0, 10) || 'Date not provided by VA' }}</p>
       <p v-if="outcomes[key(row)]?.ok === false" role="status" class="text-sm text-error">{{ outcomes[key(row)]!.message }}</p>

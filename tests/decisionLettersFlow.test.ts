@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { vaFetch } from '../shared/vaClient'
 import { fetchBinaryViaVaGovTab } from '../shared/vaGovTabFetch'
 import { buildDecisionLetterUploadsForTrack, isDecisionLetterRow, listVaDecisionLetters, rowFromClaimLetterEntry, downloadVaDecisionLetter } from '../shared/vaClaimLetters'
-import { sendDecisionLetterToVch } from '../shared/decisionLetterImport'
+import { fetchImportedDecisionLetterKeys, sendDecisionLetterToVch } from '../shared/decisionLetterImport'
 import { hasCloudConsent } from '../shared/privacyConsent'
 
 vi.mock('../shared/vaClient', () => ({ vaFetch: vi.fn() }))
@@ -75,8 +75,21 @@ describe('VA decision-letter discovery and import', () => {
     expect(options.credentials).toBe('omit')
     expect(options.headers.Authorization).toBe('Bearer test-token')
     expect(options.body.get('documentTypeHint')).toBe('va_decision')
+    expect(options.body.get('vaDecisionLetterKey')).toBe('one:184')
     expect(options.body.get('file').type).toBe('application/pdf')
     expect(options.body.has('conditionId')).toBe(false)
+  })
+
+  it('reads import status through the signed-in VCH account without downloading a PDF', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ letterKeys: ['one:184'] })))
+    vi.stubGlobal('fetch', fetch)
+    await expect(fetchImportedDecisionLetterKeys('account-a')).resolves.toEqual(['one:184'])
+    expect(fetch).toHaveBeenCalledExactlyOnceWith('https://claimbuilder.veteranscentralhub.com/api/documents/va-decision-letters', expect.objectContaining({
+      credentials: 'omit', headers: expect.objectContaining({ Authorization: 'Bearer test-token' })
+    }))
+    await expect(fetchImportedDecisionLetterKeys('account-b')).rejects.toThrow('Sign in')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetchBinaryViaVaGovTab).not.toHaveBeenCalled()
   })
 
   it('stops if permission is revoked during download', async () => {
