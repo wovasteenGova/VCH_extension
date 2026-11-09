@@ -1,6 +1,6 @@
 import { consumeVaTrackClaimsIntent } from '@/shared/vaSignInNavigation'
-import { applyVaCacheMutation, checkVaCacheEpoch, establishVaCacheOwner, VA_CACHE_WRITE } from '@/shared/vaDeviceCache'
-import { hasCloudConsent, hasLocalDataConsent } from '@/shared/privacyConsent'
+import { applyVaCacheMutation, checkVaCacheEpoch, establishVaCacheOwner, VA_CACHE_WRITE, VA_DEVICE_CACHE_STORAGE_KEY } from '@/shared/vaDeviceCache'
+import { hasCloudConsent, hasLocalDataConsent, PRIVACY_CONSENT_KEY } from '@/shared/privacyConsent'
 import { isClaimBuilderBridgeOrigin } from '@/shared/claimBuilderBridge'
 
 import {
@@ -9,9 +9,23 @@ import {
 } from '@/shared/claimBuilderBridge'
 import { probeVaSession } from '@/shared/connectionStatus'
 import { readVaTrackBridgeCachePayload } from '@/shared/vaTrackBridgeCache'
+import { autoSyncApprovedVaClaims } from '@/shared/vaProfileImport'
 import { hubUrl, VCH_EXTENSION_HUB_PATH } from '@/shared/urls'
 
 export default defineBackground(() => {
+  let syncTimer: ReturnType<typeof setTimeout> | undefined
+  function scheduleApprovedClaimSync() {
+    clearTimeout(syncTimer)
+    // Claims and appeals often arrive as two writes from one VA refresh.
+    syncTimer = setTimeout(() => { void autoSyncApprovedVaClaims().catch(() => undefined) }, 500)
+  }
+
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && (VA_DEVICE_CACHE_STORAGE_KEY in changes || PRIVACY_CONSENT_KEY in changes)) {
+      scheduleApprovedClaimSync()
+    }
+  })
+
   browser.runtime.onInstalled.addListener((details) => {
     // Previous builds kept raw PDFs in local storage without an expiry.
     void browser.storage.local.remove('vch-va-pending-track-letters-v1')
@@ -27,6 +41,12 @@ export default defineBackground(() => {
     const ownPage = sender.url?.startsWith(browser.runtime.getURL('/')) === true
     const vaPage = ['https://va.gov', 'https://www.va.gov'].includes(origin)
     const bridgePage = isClaimBuilderBridgeOrigin(origin) && sender.frameId === 0
+    if (message?.type === 'VCH_SYNC_APPROVED_VA_TRACK') {
+      if (!ownPage) return
+      scheduleApprovedClaimSync()
+      sendResponse({ ok: true })
+      return
+    }
     if (message?.type === 'VCH_VA_ACCOUNT' || message?.type === 'VCH_VA_ACCOUNT_CHECK') {
       if (!ownPage && !vaPage) return
       if (message.type === 'VCH_VA_ACCOUNT_CHECK') {

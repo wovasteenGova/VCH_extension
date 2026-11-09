@@ -1,7 +1,7 @@
 import { readHubSession } from './hubSessionRead'
-import { approveVaProfileCloudSave, hasVaProfileCloudApproval } from './privacyConsent'
+import { readVaProfileCloudApproval } from './privacyConsent'
 import { importTrackSnapshotToClaimBuilder, type ClaimBuilderTrackImportResult } from './claimBuilderTrackImport'
-import type { VaTrackBridgeCachePayload } from './vaTrackBridgeCache'
+import { readVaTrackBridgeCachePayload, type VaTrackBridgeCachePayload } from './vaTrackBridgeCache'
 import { importVaRatingsToClaimBuilder, type ClaimBuilderVaImportPayload } from './claimBuilderVaImport'
 import { sendDecisionLetterToVch } from './decisionLetterImport'
 import type { VaLetterIndexRow } from './vaClaimLetters'
@@ -17,26 +17,75 @@ export type VaProfileImportResult = {
   letterResults: LetterImportOutcome[]
 }
 
-/** Use one account approval for future explicit saves. Only send the chosen data. */
-export async function saveVaProfileToVch(input: {
-  approved: boolean
+export const VA_PROFILE_SYNC_STATE_PREFIX = 'vch-va-profile-sync:'
+type VaProfileSyncState = { lastSyncedAt?: string, trackFingerprint?: string }
+
+export async function readVaProfileSyncState(accountId: string): Promise<VaProfileSyncState> {
+  const key = VA_PROFILE_SYNC_STATE_PREFIX + accountId
+  return (await browser.storage.local.get(key))[key] as VaProfileSyncState | undefined ?? {}
+}
+
+async function trackFingerprint(track: VaTrackBridgeCachePayload) {
+  // Only changes to claims or appeals should trigger automatic uploads.
+  const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id)
+  const content = JSON.stringify([[...track.claims].sort(byId), [...track.appeals].sort(byId)])
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content))
+  return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+type VaProfileSaveInput = {
   accountId: string | null
   track?: VaTrackBridgeCachePayload | null
   ratings: ClaimBuilderVaImportPayload | null
   letters: VaLetterIndexRow[]
-}, events?: { progress?: (message: string) => void, letter?: (outcome: LetterImportOutcome) => void }): Promise<VaProfileImportResult> {
-  const track = input.track && (input.track.claims.length || input.track.appeals.length) ? input.track : null
-  if (!track && !input.ratings && !input.letters.length) throw new Error('Sync claims, unlock ratings, or select decision letters to save.')
+}
+type VaProfileSaveEvents = { progress?: (message: string) => void, letter?: (outcome: LetterImportOutcome) => void }
+
+// A popup save and a background sync can both update the same VCH workspace.
+function withVaProfileSaveLock<T>(save: () => Promise<T>) {
+  return globalThis.navigator?.locks?.request('vch-va-profile-save', save) ?? save()
+}
+
+export function saveVaProfileToVch(input: VaProfileSaveInput, events?: VaProfileSaveEvents) {
+  return withVaProfileSaveLock(() => saveApprovedVaData(input, events))
+}
+
+export async function autoSyncApprovedVaClaims() {
+  const session = await readHubSession()
+  if (!session.accountId || !(await readVaProfileCloudApproval(session.accountId))?.autoSyncTrack) return
+  await withVaProfileSaveLock(() => saveApprovedVaData({
+    accountId: session.accountId, ratings: null, letters: []
+  }, undefined, true))
+}
+
+async function saveApprovedVaData(
+  input: VaProfileSaveInput,
+  events?: VaProfileSaveEvents,
+  automatic = false
+): Promise<VaProfileImportResult> {
   const session = await readHubSession()
   if (!input.accountId || session.accountId !== input.accountId) throw new Error('Your VCH destination account changed or is not signed in. Refresh the account and approve again.')
-  if (input.approved) await approveVaProfileCloudSave(input.accountId)
-  else if (!await hasVaProfileCloudApproval(input.accountId)) throw new Error('Approve saving VA data to your VCH account first.')
-
+  const approval = await readVaProfileCloudApproval(input.accountId)
   const result: VaProfileImportResult = { ratingsSaved: false, lettersSaved: 0, lettersTotal: input.letters.length, letterResults: [] }
+  if (automatic && !approval?.autoSyncTrack) return result
+  if (!approval) throw new Error('Approve saving VA data to your VCH account first.')
+
+  const candidate = automatic ? await readVaTrackBridgeCachePayload() : input.track
+  const track = candidate && (candidate.claims.length || candidate.appeals.length) ? candidate : null
+  if (!track && !input.ratings && !input.letters.length) {
+    if (automatic) return result
+    throw new Error('Sync claims, unlock ratings, or select decision letters to save.')
+  }
+  const syncState = await readVaProfileSyncState(input.accountId)
   if (track) {
-    events?.progress?.('Saving claims and appeals…')
     try {
-      result.track = await importTrackSnapshotToClaimBuilder(track, input.accountId)
+      const fingerprint = await trackFingerprint(track)
+      if (automatic && syncState.trackFingerprint === fingerprint) return result
+      events?.progress?.('Saving claims and appeals…')
+      result.track = automatic
+        ? await importTrackSnapshotToClaimBuilder(track, input.accountId, { automatic: true })
+        : await importTrackSnapshotToClaimBuilder(track, input.accountId)
+      syncState.trackFingerprint = fingerprint
     } catch (error) {
       result.trackError = error instanceof Error ? error.message : 'Could not save claims and appeals.'
     }
@@ -62,6 +111,15 @@ export async function saveVaProfileToVch(input: {
     }
     result.letterResults.push(outcome)
     events?.letter?.(outcome)
+  }
+  if (result.track || result.ratingsSaved || result.lettersSaved > 0) {
+    // A revoked or replaced approval must not receive an in-flight receipt.
+    const current = await readVaProfileCloudApproval(input.accountId)
+    if (current?.acceptedAt === approval.acceptedAt) {
+      await browser.storage.local.set({
+        [VA_PROFILE_SYNC_STATE_PREFIX + input.accountId]: { ...syncState, lastSyncedAt: new Date().toISOString() }
+      }).catch(() => undefined)
+    }
   }
   return result
 }

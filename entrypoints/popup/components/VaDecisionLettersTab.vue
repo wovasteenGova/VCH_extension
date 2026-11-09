@@ -58,7 +58,7 @@ defineExpose({ selectedLetters, recordOutcome })
 <template>
   <section class="space-y-3 py-2" aria-labelledby="letters-heading">
     <h2 id="letters-heading" class="font-semibold text-highlighted">Decision letters</h2>
-    <p class="text-sm text-muted">Choose the PDFs to save from your signed-in VA.gov account. Ratings and selected letters share the approval below.</p>
+    <p class="text-sm text-muted">Choose the PDFs you want to save, then open Sync Approved above to save them to your VCH account.</p>
     <div class="flex flex-wrap gap-2">
       <UButton :loading="loading" icon="i-lucide-refresh-cw" @click="load()">{{ loaded ? 'Refresh letters' : 'Find decision letters' }}</UButton>
       <UButton variant="outline" @click="openVaClaimsPage">Open VA.gov</UButton>

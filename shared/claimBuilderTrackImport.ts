@@ -1,4 +1,4 @@
-import { hasCloudConsent } from './privacyConsent'
+import { hasCloudConsent, readVaProfileCloudApproval } from './privacyConsent'
 import { readHubSession } from './hubSessionRead'
 import type { VaTrackBridgeCachePayload } from './vaTrackBridgeCache'
 import { CLAIMBUILDER_URL } from './urls'
@@ -13,11 +13,15 @@ export type ClaimBuilderTrackImportResult = {
 
 export async function importTrackSnapshotToClaimBuilder(
   input: VaTrackBridgeCachePayload,
-  accountId: string
+  accountId: string,
+  options?: { automatic?: boolean }
 ): Promise<ClaimBuilderTrackImportResult> {
   const session = await readHubSession()
   if (!session.accessToken || session.accountId !== accountId || !await hasCloudConsent('track', accountId)) {
     throw new Error('Review your VCH account and approve saving VA data in VA Profile.')
+  }
+  if (options?.automatic && !(await readVaProfileCloudApproval(accountId))?.autoSyncTrack) {
+    throw new Error('Automatic claim sync is off for this account.')
   }
 
   const base = CLAIMBUILDER_URL.replace(/\/$/, '')
@@ -25,7 +29,7 @@ export async function importTrackSnapshotToClaimBuilder(
     method: 'POST',
     credentials: 'omit',
     redirect: 'error',
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(options?.automatic ? 25_000 : 120_000),
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',

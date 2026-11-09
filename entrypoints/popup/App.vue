@@ -44,7 +44,7 @@ async function trackOnVch() {
         activeTab.value = 'profile'
         return
       }
-      const result = await saveVaProfileToVch({ approved: false, accountId, track, ratings: null, letters: [] })
+      const result = await saveVaProfileToVch({ accountId, track, ratings: null, letters: [] })
       if (!result.track) throw new Error(result.trackError || 'Could not save claims and appeals.')
     }
     await openTracker()
@@ -61,6 +61,7 @@ async function refreshConsent() {
 }
 onMounted(() => {
   void refreshConsent()
+  void browser.runtime.sendMessage({ type: 'VCH_SYNC_APPROVED_VA_TRACK' }).catch(() => undefined)
   const onChanged = (changes: Record<string, unknown>, area: string) => {
     if (area === 'local' && PRIVACY_CONSENT_KEY in changes) void refreshConsent()
   }
@@ -148,17 +149,17 @@ const tabs = computed(() => [
         <div class="popup-tab-scroll custom-scrollbar relative z-0 h-full min-h-0 overflow-y-auto overscroll-contain">
           <p v-if="!privacyReady" role="status" class="py-4 text-sm text-muted">Loading your privacy preferences…</p>
           <PrivacySettings v-else-if="!localConsent || privacyOpen" :accepted="localConsent" @accepted="acceptedPrivacy" @cleared="clearedPrivacy" @close="privacyOpen = false" />
-          <template v-else>
           <VaProfileTab
-            v-if="activeTab === 'profile'"
+            v-if="privacyReady && localConsent"
+            v-show="activeTab === 'profile' && !privacyOpen"
+            :active="activeTab === 'profile' && !privacyOpen"
             :track-after-save="trackAfterSave"
             @privacy="privacyOpen = true"
             @saving="savingVaData = $event"
             @track="openTracker"
           />
-          <VaClaimTrackerTab v-if="activeTab === 'claims'" :tracking="savingVaData" @track="trackOnVch" />
-          <HubTab v-if="activeTab === 'hub'" />
-          </template>
+          <VaClaimTrackerTab v-if="localConsent && !privacyOpen && activeTab === 'claims'" :tracking="savingVaData" @track="trackOnVch" />
+          <HubTab v-if="localConsent && !privacyOpen && activeTab === 'hub'" />
         </div>
       </div>
 

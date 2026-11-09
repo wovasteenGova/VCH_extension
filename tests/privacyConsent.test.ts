@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { acceptLocalDataAccess, approveVaProfileCloudSave, clearVaDataAndConsent, hasCloudConsent, hasLocalDataConsent, hasVaProfileCloudApproval, PRIVACY_CONSENT_KEY, revokeCloudConsent } from '../shared/privacyConsent'
+import { acceptLocalDataAccess, approveVaProfileCloudSave, clearVaDataAndConsent, hasCloudConsent, hasLocalDataConsent, hasVaProfileCloudApproval, PRIVACY_CONSENT_KEY, readVaProfileCloudApproval, revokeCloudConsent, revokeVaProfileCloudApproval, setVaProfileTrackAutoSync } from '../shared/privacyConsent'
 import { readHubAccessToken } from '../shared/hubSessionRead'
 
 vi.mock('../shared/hubSessionRead', () => ({ readHubAccessToken: vi.fn() }))
@@ -20,25 +20,39 @@ beforeEach(() => {
 describe('separate local and cloud permission', () => {
   it('remembers one approval per destination account across all save categories', async () => {
     await acceptLocalDataAccess()
-    await approveVaProfileCloudSave('account-a')
+    await approveVaProfileCloudSave('account-a', true)
     expect(await hasCloudConsent('ratings')).toBe(true)
     expect(await hasCloudConsent('letters')).toBe(true)
     expect(await hasCloudConsent('track', 'account-a')).toBe(true)
     expect(await hasCloudConsent('track', 'account-b')).toBe(false)
     vi.mocked(readHubAccessToken).mockResolvedValue(token('account-b'))
     expect(await hasCloudConsent('track')).toBe(false)
-    await expect(approveVaProfileCloudSave('account-a')).rejects.toThrow('account changed')
-    await approveVaProfileCloudSave('account-b')
+    await expect(approveVaProfileCloudSave('account-a', true)).rejects.toThrow('account changed')
+    await approveVaProfileCloudSave('account-b', false)
     vi.mocked(readHubAccessToken).mockResolvedValue(token('account-a'))
     expect(await hasVaProfileCloudApproval('account-a')).toBe(true)
+    expect(await readVaProfileCloudApproval('account-a')).toMatchObject({ autoSyncTrack: true })
+    await revokeVaProfileCloudApproval('account-a')
+    expect(await hasCloudConsent('track')).toBe(false)
+    vi.mocked(readHubAccessToken).mockResolvedValue(token('account-b'))
+    expect(await readVaProfileCloudApproval('account-b')).toMatchObject({ autoSyncTrack: false })
   })
   it('starts without consent and local consent never grants a cloud import', async () => {
     expect(await hasLocalDataConsent()).toBe(false)
-    await expect(approveVaProfileCloudSave('account-a')).rejects.toThrow('Enable')
+    await expect(approveVaProfileCloudSave('account-a', true)).rejects.toThrow('Enable')
     await acceptLocalDataAccess()
     expect(await hasLocalDataConsent()).toBe(true)
     expect(await hasCloudConsent('letters')).toBe(false)
     expect(await hasCloudConsent('track')).toBe(false)
+  })
+
+  it('retains an existing manual approval without starting automatic uploads', async () => {
+    await acceptLocalDataAccess()
+    const acceptedAt = new Date().toISOString()
+    Object.assign(stored[PRIVACY_CONSENT_KEY] as object, { profileApprovals: { 'account-a': acceptedAt } })
+    expect(await readVaProfileCloudApproval('account-a')).toEqual({ acceptedAt, autoSyncTrack: false })
+    await setVaProfileTrackAutoSync('account-a', true)
+    expect(await readVaProfileCloudApproval('account-a')).toEqual({ acceptedAt, autoSyncTrack: true })
   })
 
   it('keeps existing grants scoped to their original account and category', async () => {
@@ -66,7 +80,7 @@ describe('separate local and cloud permission', () => {
 
   it('revokes cloud permissions without revoking local access', async () => {
     await acceptLocalDataAccess()
-    await approveVaProfileCloudSave('account-a')
+    await approveVaProfileCloudSave('account-a', true)
     await revokeCloudConsent()
     expect(await hasCloudConsent('letters')).toBe(false)
     expect(await hasVaProfileCloudApproval('account-a')).toBe(false)
