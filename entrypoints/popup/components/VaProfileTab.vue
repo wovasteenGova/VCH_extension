@@ -25,7 +25,7 @@ const activeProfileTab = ref('ratings')
 const ratings = ref<InstanceType<typeof VaRatingsTab> | null>(null)
 const letters = ref<InstanceType<typeof VaDecisionLettersTab> | null>(null)
 const approval = ref<VaProfileCloudApproval | null>(null)
-const approvalCardOpen = ref(false)
+const approvalCardOpen = ref<boolean | null>(null)
 const approvalCard = ref<HTMLElement | null>(null)
 const draftAutoSyncTrack = ref(true)
 const updatingApproval = ref(false)
@@ -51,7 +51,7 @@ const trackSummary = computed(() => {
   return `${claims} claim${claims === 1 ? '' : 's'} and ${appeals} appeal${appeals === 1 ? '' : 's'}`
 })
 const canSave = computed(() => Boolean(accountId.value && ((includeTrack.value && hasTrack.value) || ratingsReady.value || selectedLetters.value.length)))
-const showApprovalCard = computed(() => !approval.value || approvalCardOpen.value)
+const showApprovalCard = computed(() => approvalCardOpen.value ?? !approval.value)
 const lastSyncLabel = computed(() => formatLastSynced(lastSyncedAt.value))
 
 let accountRefresh = 0
@@ -62,7 +62,7 @@ async function refreshAccount() {
   const syncState = session.accountId ? await readVaProfileSyncState(session.accountId) : null
   if (generation !== accountRefresh) return
   if (accountId.value !== session.accountId) {
-    approvalCardOpen.value = false
+    if (accountReady.value) approvalCardOpen.value = null
     draftAutoSyncTrack.value = true
     feedback.value = ''
   }
@@ -102,6 +102,11 @@ watch(() => props.trackAfterSave, (requested) => {
   approvalCardOpen.value = true
   void nextTick(() => approvalCard.value?.scrollIntoView({ block: 'start' }))
 })
+
+function dismissApprovalCard() {
+  approvalCardOpen.value = false
+  void nextTick(() => document.getElementById('va-profile-sync-toggle')?.focus())
+}
 
 async function updateApproval(action: (accountId: string) => Promise<void>) {
   if (!accountId.value || saving.value || updatingApproval.value) return false
@@ -179,12 +184,26 @@ async function save(trackOnly = false) {
     <div class="flex items-center justify-between gap-2">
       <h2 id="va-profile-heading" class="text-base font-semibold text-highlighted">VA Profile</h2>
       <div class="flex shrink-0 items-center gap-1">
-        <UButton v-if="approval" size="xs" variant="soft" color="success" icon="i-lucide-circle-check" aria-controls="va-profile-sync-card" :aria-expanded="showApprovalCard" :disabled="saving || updatingApproval" @click="approvalCardOpen = !showApprovalCard">Sync Approved</UButton>
+        <UButton
+          v-if="approval || !showApprovalCard"
+          id="va-profile-sync-toggle"
+          size="xs"
+          variant="soft"
+          :color="approval ? 'success' : 'neutral'"
+          :icon="approval ? 'i-lucide-circle-check' : 'i-lucide-cloud-upload'"
+          aria-controls="va-profile-sync-card"
+          :aria-expanded="showApprovalCard"
+          :disabled="saving || updatingApproval"
+          @click="approvalCardOpen = !showApprovalCard"
+        >{{ approval ? 'Sync Approved' : 'Set up sync' }}</UButton>
         <UButton size="xs" variant="ghost" icon="i-lucide-settings-2" :disabled="saving || updatingApproval" @click="$emit('privacy')">Data controls</UButton>
       </div>
     </div>
     <section v-if="showApprovalCard" id="va-profile-sync-card" ref="approvalCard" class="space-y-3 rounded-lg border border-default bg-elevated/30 p-3" aria-labelledby="save-va-data-heading">
-      <h3 id="save-va-data-heading" class="text-base font-semibold text-highlighted">Save VA data to your VCH account</h3>
+      <div class="flex items-start justify-between gap-2">
+        <h3 id="save-va-data-heading" class="text-base font-semibold text-highlighted">Save VA data to your VCH account</h3>
+        <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-x" aria-label="Dismiss sync card" :disabled="saving || updatingApproval" @click="dismissApprovalCard" />
+      </div>
       <div class="flex items-center justify-between gap-2">
         <p class="text-sm font-medium">{{ accountLabel }}</p>
         <UButton size="xs" variant="ghost" icon="i-lucide-refresh-cw" aria-label="Refresh VCH account" :disabled="saving" @click="refreshAccount" />
