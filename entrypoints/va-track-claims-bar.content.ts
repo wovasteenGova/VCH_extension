@@ -1,3 +1,4 @@
+import hubLogo from '../public/icon-48.png?inline'
 import { hasLocalDataConsent } from '@/shared/privacyConsent'
 import { formatLastSynced, readVaCacheMeta } from '@/shared/vaDeviceCache'
 import {
@@ -48,16 +49,10 @@ const BAR_STYLES = `
   padding: 10px 12px;
 }
 .logo {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
-  background: rgba(201, 162, 39, 0.15);
-  border: 1px solid rgba(201, 162, 39, 0.35);
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  font-weight: 800;
-  color: #e8c547;
+  object-fit: contain;
   flex-shrink: 0;
 }
 .title-wrap {
@@ -153,7 +148,7 @@ export default defineContentScript({
     shell.className = 'shell'
     shell.innerHTML = `
       <div class="header">
-        <div class="logo" aria-hidden="true">VCH</div>
+        <img class="logo" src="${hubLogo}" alt="">
         <div class="title-wrap">
           <p class="title">VCH Web Extension</p>
           <p class="subtitle" data-role="subtitle">Checking your claims…</p>
