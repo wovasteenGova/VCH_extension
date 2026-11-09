@@ -29,6 +29,7 @@ export type ParsedVaClaim = {
   phase: string
   phaseLabel: string
   phaseChangeDate?: string
+  currentPhaseBack?: boolean
   claimDate?: string
   closeDate?: string
   jurisdiction?: string
@@ -212,6 +213,7 @@ export function parseVaClaim(raw: unknown, fallbackId?: string): ParsedVaClaim |
     phase: latestPhase,
     phaseLabel: formatVaEnumLabel(latestPhase, PHASE_LABELS),
     phaseChangeDate: phaseDates?.phaseChangeDate,
+    currentPhaseBack: typeof phaseDates?.currentPhaseBack === 'boolean' ? phaseDates.currentPhaseBack : undefined,
     claimDate: typeof attrs.claimDate === 'string' ? attrs.claimDate : undefined,
     closeDate: typeof attrs.closeDate === 'string' ? attrs.closeDate : undefined,
     jurisdiction: typeof attrs.jurisdiction === 'string' ? attrs.jurisdiction : undefined,
@@ -240,7 +242,11 @@ export function mergeParsedClaims(current: ParsedVaClaim[], incoming: ParsedVaCl
   const byId = new Map(current.map(claim => [claim.id, claim]))
   for (const claim of incoming) {
     const existing = byId.get(claim.id)
-    byId.set(claim.id, existing ? { ...existing, ...claim } : claim)
+    byId.set(claim.id, existing ? {
+      ...existing,
+      ...claim,
+      previousPhases: claim.previousPhases?.length ? claim.previousPhases : existing.previousPhases
+    } : claim)
   }
   return [...byId.values()]
 }

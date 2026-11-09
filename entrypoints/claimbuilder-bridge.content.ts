@@ -40,14 +40,15 @@ async function probeVaSessionForBridge(): Promise<ConnectionState> {
   return inflightProbe
 }
 
-async function readTrackCacheForClaimBuilderBridge() {
+async function readTrackCacheForClaimBuilderBridge(accountId?: string) {
   const fromBackground = await safeExtensionRuntimeMessage<VaTrackBridgeCachePayload | { ok: false, error?: string }>({
-    type: VCH_PROBE_VA_TRACK_CACHE
+    type: VCH_PROBE_VA_TRACK_CACHE,
+    accountId
   })
   if (fromBackground?.ok === true) {
     return fromBackground
   }
-  return { ok: false as const, error: fromBackground && 'error' in fromBackground ? fromBackground.error : 'Open the VCH extension to enable Track sync.', claims: [], appeals: [], deviceLastSyncedAt: null, vaLabel: null }
+  return { ok: false as const, error: fromBackground && 'error' in fromBackground ? fromBackground.error : 'Open VA Profile in the VCH extension to save claims and appeals.', claims: [], appeals: [], deviceLastSyncedAt: null, vaLabel: null }
 }
 
 export default defineContentScript({
@@ -67,12 +68,13 @@ export default defineContentScript({
       if (!isClaimBuilderBridgeOrigin(event.origin)) return
 
       if (isClaimBuilderTrackCacheRequest(event.data)) {
+        const { accountId, requestId } = event.data
         void (async () => {
-          const cache = await readTrackCacheForClaimBuilderBridge()
+          const cache = await readTrackCacheForClaimBuilderBridge(accountId)
           const response: VchClaimBuilderTrackCacheResponse = {
             source: VCH_EXTENSION_BRIDGE_SOURCE,
             type: VCH_VA_TRACK_CACHE,
-            requestId: event.data.requestId,
+            requestId,
             ok: cache.ok,
             ...('error' in cache ? { error: cache.error } : {}),
             claims: cache.claims,

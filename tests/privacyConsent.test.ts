@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { acceptLocalDataAccess, clearVaDataAndConsent, grantCloudConsent, grantCloudConsents, hasCloudConsent, hasLocalDataConsent, PRIVACY_CONSENT_KEY, revokeCloudConsent } from '../shared/privacyConsent'
+import { acceptLocalDataAccess, approveVaProfileCloudSave, clearVaDataAndConsent, hasCloudConsent, hasLocalDataConsent, hasVaProfileCloudApproval, PRIVACY_CONSENT_KEY, revokeCloudConsent } from '../shared/privacyConsent'
 import { readHubAccessToken } from '../shared/hubSessionRead'
 
 vi.mock('../shared/hubSessionRead', () => ({ readHubAccessToken: vi.fn() }))
@@ -18,29 +18,37 @@ beforeEach(() => {
 })
 
 describe('separate local and cloud permission', () => {
-  it('records one atomic approval for ratings and selected letters, bound to the reviewed account', async () => {
+  it('remembers one approval per destination account across all save categories', async () => {
     await acceptLocalDataAccess()
-    await grantCloudConsents(['ratings', 'letters'], 'account-a')
+    await approveVaProfileCloudSave('account-a')
     expect(await hasCloudConsent('ratings')).toBe(true)
     expect(await hasCloudConsent('letters')).toBe(true)
+    expect(await hasCloudConsent('track', 'account-a')).toBe(true)
+    expect(await hasCloudConsent('track', 'account-b')).toBe(false)
+    vi.mocked(readHubAccessToken).mockResolvedValue(token('account-b'))
     expect(await hasCloudConsent('track')).toBe(false)
-    await expect(grantCloudConsents(['track'], 'different-account')).rejects.toThrow('account changed')
-    expect(await hasCloudConsent('track')).toBe(false)
+    await expect(approveVaProfileCloudSave('account-a')).rejects.toThrow('account changed')
+    await approveVaProfileCloudSave('account-b')
+    vi.mocked(readHubAccessToken).mockResolvedValue(token('account-a'))
+    expect(await hasVaProfileCloudApproval('account-a')).toBe(true)
   })
   it('starts without consent and local consent never grants a cloud import', async () => {
     expect(await hasLocalDataConsent()).toBe(false)
-    await expect(grantCloudConsent('letters')).rejects.toThrow('Enable')
+    await expect(approveVaProfileCloudSave('account-a')).rejects.toThrow('Enable')
     await acceptLocalDataAccess()
     expect(await hasLocalDataConsent()).toBe(true)
     expect(await hasCloudConsent('letters')).toBe(false)
     expect(await hasCloudConsent('track')).toBe(false)
   })
 
-  it('scopes a grant to its destination account and data category', async () => {
+  it('keeps existing grants scoped to their original account and category', async () => {
     await acceptLocalDataAccess()
-    await grantCloudConsent('letters')
+    Object.assign(stored[PRIVACY_CONSENT_KEY] as object, {
+      cloud: { letters: { accountId: 'account-a', acceptedAt: new Date().toISOString() } }
+    })
     expect(await hasCloudConsent('letters')).toBe(true)
     expect(await hasCloudConsent('ratings')).toBe(false)
+    expect(await hasVaProfileCloudApproval('account-a')).toBe(false)
     vi.mocked(readHubAccessToken).mockResolvedValue(token('account-b'))
     expect(await hasCloudConsent('letters')).toBe(false)
     vi.mocked(readHubAccessToken).mockResolvedValue(null)
@@ -49,19 +57,19 @@ describe('separate local and cloud permission', () => {
 
   it('expires old grants and rejects future timestamps', async () => {
     await acceptLocalDataAccess()
-    await grantCloudConsent('letters')
-    const data = stored[PRIVACY_CONSENT_KEY] as any
-    data.cloud.letters.acceptedAt = new Date(Date.now() - 31 * 86_400_000).toISOString()
+    const grant = { accountId: 'account-a', acceptedAt: new Date(Date.now() - 31 * 86_400_000).toISOString() }
+    Object.assign(stored[PRIVACY_CONSENT_KEY] as object, { cloud: { letters: grant } })
     expect(await hasCloudConsent('letters')).toBe(false)
-    data.cloud.letters.acceptedAt = new Date(Date.now() + 86_400_000).toISOString()
+    grant.acceptedAt = new Date(Date.now() + 86_400_000).toISOString()
     expect(await hasCloudConsent('letters')).toBe(false)
   })
 
   it('revokes cloud permissions without revoking local access', async () => {
     await acceptLocalDataAccess()
-    await grantCloudConsent('letters')
+    await approveVaProfileCloudSave('account-a')
     await revokeCloudConsent()
     expect(await hasCloudConsent('letters')).toBe(false)
+    expect(await hasVaProfileCloudApproval('account-a')).toBe(false)
     expect(await hasLocalDataConsent()).toBe(true)
   })
 

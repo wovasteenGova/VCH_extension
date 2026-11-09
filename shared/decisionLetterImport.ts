@@ -1,5 +1,5 @@
 import { CLAIMBUILDER_URL } from './urls'
-import { readHubAccessToken } from './hubSessionRead'
+import { readHubAccessToken, readHubSession } from './hubSessionRead'
 import { hasCloudConsent } from './privacyConsent'
 import { downloadVaDecisionLetter, type VaLetterIndexRow } from './vaClaimLetters'
 
@@ -10,13 +10,14 @@ export function decisionLetterFilename(row: VaLetterIndexRow) {
 }
 
 /** Import to the private library without guessing an association with a claim. */
-export async function sendDecisionLetterToVch(row: VaLetterIndexRow) {
-  if (!await hasCloudConsent('letters')) throw new Error('Confirm sending decision letters to your VCH account first.')
-  const token = await readHubAccessToken()
-  if (!token) throw new Error('Sign in to VCH in this browser, then try again.')
+export async function sendDecisionLetterToVch(row: VaLetterIndexRow, accountId: string) {
+  const { accessToken: token, accountId: currentAccountId } = await readHubSession()
+  if (!token || currentAccountId !== accountId || !await hasCloudConsent('letters', accountId)) {
+    throw new Error('Confirm saving VA data to your VCH account first.')
+  }
   const base64 = await downloadVaDecisionLetter(row)
   // Re-check after the VA download in case the account or consent changed meanwhile.
-  if (!await hasCloudConsent('letters') || token !== await readHubAccessToken()) throw new Error('Your VCH session changed. Confirm the destination account and try again.')
+  if (!await hasCloudConsent('letters', accountId) || token !== await readHubAccessToken()) throw new Error('Your VCH session changed. Confirm the destination account and try again.')
   const data = atob(base64)
   const bytes = Uint8Array.from(data, char => char.charCodeAt(0))
   const form = new FormData()

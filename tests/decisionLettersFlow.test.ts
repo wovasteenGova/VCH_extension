@@ -7,7 +7,10 @@ import { hasCloudConsent } from '../shared/privacyConsent'
 
 vi.mock('../shared/vaClient', () => ({ vaFetch: vi.fn() }))
 vi.mock('../shared/vaGovTabFetch', () => ({ fetchBinaryViaVaGovTab: vi.fn() }))
-vi.mock('../shared/hubSessionRead', () => ({ readHubAccessToken: vi.fn(async () => 'test-token') }))
+vi.mock('../shared/hubSessionRead', () => ({
+  readHubAccessToken: vi.fn(async () => 'test-token'),
+  readHubSession: vi.fn(async () => ({ accountId: 'account-a', accessToken: 'test-token' }))
+}))
 vi.mock('../shared/privacyConsent', () => ({ hasCloudConsent: vi.fn(async () => false) }))
 
 const entry = (id: string, docType: number) => ({ documentId: id, docType, receivedAt: '2026-10-22' })
@@ -50,7 +53,7 @@ describe('VA decision-letter discovery and import', () => {
 
   it('does not download or send any PDF before cloud consent', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
-    await expect(sendDecisionLetterToVch(rowFromClaimLetterEntry(entry('one', 184))!)).rejects.toThrow('Confirm')
+    await expect(sendDecisionLetterToVch(rowFromClaimLetterEntry(entry('one', 184))!, 'account-a')).rejects.toThrow('Confirm')
     expect(fetchBinaryViaVaGovTab).not.toHaveBeenCalled()
     expect(fetch).not.toHaveBeenCalled()
   })
@@ -60,7 +63,7 @@ describe('VA decision-letter discovery and import', () => {
     vi.mocked(fetchBinaryViaVaGovTab).mockResolvedValue({ ok: true, status: 200, base64: btoa('%PDF-1.7') })
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ document: { id: 'saved-id' }, duplicate: true })))
     vi.stubGlobal('fetch', fetch)
-    expect(await sendDecisionLetterToVch(rowFromClaimLetterEntry(entry('one', 184))!)).toEqual({ documentId: 'saved-id', duplicate: true })
+    expect(await sendDecisionLetterToVch(rowFromClaimLetterEntry(entry('one', 184))!, 'account-a')).toEqual({ documentId: 'saved-id', duplicate: true })
     const [url, options] = fetch.mock.calls[0]!
     expect(url).toBe('https://claimbuilder.veteranscentralhub.com/api/documents/upload')
     expect(options.credentials).toBe('omit')
@@ -74,7 +77,7 @@ describe('VA decision-letter discovery and import', () => {
     vi.mocked(hasCloudConsent).mockResolvedValueOnce(true).mockResolvedValueOnce(false)
     vi.mocked(fetchBinaryViaVaGovTab).mockResolvedValue({ ok: true, status: 200, base64: btoa('%PDF-1.7') })
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
-    await expect(sendDecisionLetterToVch(rowFromClaimLetterEntry(entry('one', 184))!)).rejects.toThrow('session changed')
+    await expect(sendDecisionLetterToVch(rowFromClaimLetterEntry(entry('one', 184))!, 'account-a')).rejects.toThrow('session changed')
     expect(fetch).not.toHaveBeenCalled()
   })
 })

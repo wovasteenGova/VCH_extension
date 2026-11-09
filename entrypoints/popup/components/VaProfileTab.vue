@@ -4,8 +4,12 @@ import VaDecisionLettersTab from './VaDecisionLettersTab.vue'
 import { readHubSession } from '@/shared/hubSessionRead'
 import { openHubSignIn } from '@/shared/connectionStatus'
 import { describeVaProfileImport, saveVaProfileToVch } from '@/shared/vaProfileImport'
+import { hasVaProfileCloudApproval, PRIVACY_CONSENT_KEY } from '@/shared/privacyConsent'
+import { readVaTrackBridgeCachePayload, type VaTrackBridgeCachePayload } from '@/shared/vaTrackBridgeCache'
+import { subscribeVaDeviceCache } from '@/shared/vaDeviceCache'
 
-defineEmits<{ privacy: [] }>()
+const props = defineProps<{ trackAfterSave?: boolean }>()
+const emit = defineEmits<{ privacy: [], saving: [busy: boolean], track: [] }>()
 const profileTabs = [
   { label: 'Ratings', value: 'ratings', slot: 'ratings', icon: 'i-lucide-percent' },
   { label: 'Letters', value: 'letters', slot: 'letters', icon: 'i-lucide-file-text' }
@@ -13,6 +17,9 @@ const profileTabs = [
 const ratings = ref<InstanceType<typeof VaRatingsTab> | null>(null)
 const letters = ref<InstanceType<typeof VaDecisionLettersTab> | null>(null)
 const approved = ref(false)
+const previouslyApproved = ref(false)
+const includeTrack = ref(true)
+const track = shallowRef<VaTrackBridgeCachePayload | null>(null)
 const saving = ref(false)
 const accountId = ref<string | null>(null)
 const accountLabel = ref('Checking VCH account…')
@@ -24,30 +31,51 @@ const toast = useToast()
 const ratingsReady = computed(() => ratings.value?.ready === true)
 const previewItems = computed(() => ratingsReady.value ? ratings.value?.previewItems ?? [] : [])
 const selectedLetters = computed(() => letters.value?.selectedLetters ?? [])
-const canSave = computed(() => Boolean(accountId.value && (ratingsReady.value || selectedLetters.value.length)))
+const hasTrack = computed(() => Boolean(track.value && (track.value.claims.length || track.value.appeals.length)))
+const trackSummary = computed(() => {
+  const claims = track.value?.claims.length ?? 0
+  const appeals = track.value?.appeals.length ?? 0
+  return `${claims} claim${claims === 1 ? '' : 's'} and ${appeals} appeal${appeals === 1 ? '' : 's'}`
+})
+const canSave = computed(() => Boolean(accountId.value && ((includeTrack.value && hasTrack.value) || ratingsReady.value || selectedLetters.value.length)))
 
 async function refreshAccount() {
   approved.value = false
   const session = await readHubSession()
+  previouslyApproved.value = Boolean(session.accountId && await hasVaProfileCloudApproval(session.accountId))
   accountId.value = session.accountId
   accountLabel.value = session.connected ? `VCH account: ${session.label}` : 'Sign in to VCH in this browser to save VA data.'
 }
 
-onMounted(() => { void refreshAccount() })
-// A changed preview needs a new approval; do not reset halfway through our own save.
-watch(() => JSON.stringify([ratingsReady.value, previewItems.value, selectedLetters.value.map(row => [row.documentUuid, row.document_type])]), () => {
-  if (!saving.value) approved.value = false
+async function refreshTrack() {
+  track.value = await readVaTrackBridgeCachePayload()
+}
+
+onMounted(() => {
+  void refreshAccount()
+  void refreshTrack()
+  const stop = subscribeVaDeviceCache(() => { void refreshTrack() })
+  const onConsentChanged = (changes: Record<string, unknown>, area: string) => {
+    if (area === 'local' && PRIVACY_CONSENT_KEY in changes && !saving.value) void refreshAccount()
+  }
+  browser.storage.onChanged.addListener(onConsentChanged)
+  onUnmounted(() => {
+    stop()
+    browser.storage.onChanged.removeListener(onConsentChanged)
+  })
 })
 
 async function save() {
-  if (!approved.value || !canSave.value || saving.value) return
+  if (!(previouslyApproved.value || approved.value) || !canSave.value || saving.value) return
   saving.value = true
+  emit('saving', true)
   feedback.value = ''
   const notification = toast.add({ title: 'Saving VA data…', description: 'Keep this window open until saving finishes.', icon: 'i-lucide-loader-circle', ui: { icon: 'animate-spin' }, duration: 0, close: false })
   try {
     const result = await saveVaProfileToVch({
       approved: approved.value,
       accountId: accountId.value,
+      track: includeTrack.value ? track.value : null,
       ratings: ratingsReady.value && ratings.value ? JSON.parse(JSON.stringify(ratings.value.payload)) : null,
       letters: JSON.parse(JSON.stringify(selectedLetters.value))
     }, {
@@ -58,14 +86,15 @@ async function save() {
     feedback.value = message.description
     feedbackColor.value = message.color
     toast.update(notification.id, { ...message, icon: message.color === 'success' ? 'i-lucide-circle-check' : 'i-lucide-triangle-alert', ui: { icon: '' }, duration: 6000, close: true })
+    if (props.trackAfterSave && result.track && message.color === 'success') emit('track')
   } catch (error) {
     feedback.value = error instanceof Error ? error.message : 'Could not save VA data.'
     feedbackColor.value = 'error'
     toast.update(notification.id, { title: 'Could not save VA data', description: feedback.value, color: 'error', icon: 'i-lucide-circle-alert', ui: { icon: '' }, duration: 6000, close: true })
-    await refreshAccount()
   } finally {
+    await refreshAccount()
     saving.value = false
-    approved.value = false
+    emit('saving', false)
   }
 }
 </script>
@@ -92,7 +121,9 @@ async function save() {
         <p class="text-sm font-medium">{{ accountLabel }}</p>
         <UButton size="xs" variant="ghost" icon="i-lucide-refresh-cw" aria-label="Refresh VCH account" :disabled="saving" @click="refreshAccount" />
       </div>
-      <p class="text-sm text-muted">Save your unlocked ratings and profile details to VCH and send your selected decision PDFs to your private document library for storage and analysis.</p>
+      <p v-if="trackAfterSave" class="text-sm font-medium">Save your claims and appeals here to open Claim Tracker.</p>
+      <p class="text-sm text-muted">Save claims and appeals for Claim Tracker, unlocked ratings and profile details for ClaimBuilder, and selected decision PDFs to your private document library.</p>
+      <UCheckbox v-if="hasTrack" v-model="includeTrack" :disabled="saving" :label="`Include ${trackSummary} from this browser`" />
       <p class="text-sm">{{ ratingsReady ? 'Ratings and profile included.' : 'Unlock ratings in the Ratings tab to include them.' }} {{ selectedLetters.length }} decision letter{{ selectedLetters.length === 1 ? '' : 's' }} selected.</p>
       <div v-if="previewItems.length" class="rounded-md border border-default p-2.5">
         <button type="button" class="flex w-full items-center justify-between text-left text-sm font-medium" :aria-expanded="previewOpen" @click="previewOpen = !previewOpen">
@@ -103,11 +134,11 @@ async function save() {
           <li v-for="item in previewItems" :key="item.id">{{ item.label }}<span v-if="item.detail">: {{ item.detail }}</span></li>
         </ul>
       </div>
-      <UCheckbox v-model="approved" :disabled="saving || !canSave" label="I approve sending the ratings, profile details, and selected decision letters listed above to my signed-in VCH account." />
-      <UButton block icon="i-lucide-cloud-upload" :loading="saving" :disabled="!approved || !canSave || saving" @click="save">Save to my VCH account</UButton>
+      <UCheckbox v-if="!previouslyApproved" v-model="approved" :disabled="saving || !canSave" label="Allow VCH to save claims, appeals, unlocked ratings, profile details, and selected decision letters to this account when I choose Save or Track on VCH." />
+      <UButton block icon="i-lucide-cloud-upload" :loading="saving" :disabled="!(previouslyApproved || approved) || !canSave || saving" @click="save">{{ trackAfterSave && includeTrack && hasTrack ? 'Save and open Claim Tracker' : 'Save to my VCH account' }}</UButton>
       <UButton v-if="!accountId" block variant="outline" @click="openHubSignIn">Sign in to Hub</UButton>
       <p v-if="feedback" role="status" class="text-sm" :class="feedbackColor === 'success' ? 'text-success' : feedbackColor === 'warning' ? 'text-warning' : 'text-error'">{{ feedback }}</p>
-      <p class="text-xs text-muted">Select all or choose individual letters in the Letters tab. Nothing is sent until you approve and click Save. Keep this window open until saving finishes.</p>
+      <p class="text-xs text-muted">Select individual letters or use Select all in the Letters tab. Keep this window open until saving finishes. You can revoke this account approval in Data controls.</p>
     </section>
   </section>
 </template>

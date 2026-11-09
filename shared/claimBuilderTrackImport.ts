@@ -1,9 +1,6 @@
 import { hasCloudConsent } from './privacyConsent'
-import { readHubAccessToken } from './hubSessionRead'
-import type { ParsedVaAppeal } from './vaAppealParse'
-import type { ParsedVaClaim } from './vaClaimParse'
-import type { TrackLetterUploadPayload } from './vaClaimLetters'
-import { buildDecisionLetterUploadsForTrack } from './vaClaimLetters'
+import { readHubSession } from './hubSessionRead'
+import type { VaTrackBridgeCachePayload } from './vaTrackBridgeCache'
 import { CLAIMBUILDER_URL } from './urls'
 import { DEFAULT_HUB_ORIGIN } from './hubOrigins'
 
@@ -12,28 +9,16 @@ export type ClaimBuilderTrackImportResult = {
   importedAt?: string | null
   claimCount: number
   appealCount: number
-  lettersIngested?: number
 }
 
-export async function importTrackSnapshotToClaimBuilder(input: {
-  claims: ParsedVaClaim[]
-  appeals: ParsedVaAppeal[]
-  deviceLastSyncedAt: string | null
-  vaLabel: string | null
-  letters?: TrackLetterUploadPayload[]
-  includeLetters?: boolean
-}): Promise<ClaimBuilderTrackImportResult | null> {
-  if (!await hasCloudConsent('track')) throw new Error('Allow Track sync in the extension privacy settings first.')
-  const token = await readHubAccessToken()
-  if (!token) return null
-
-  if ((input.letters?.length || input.includeLetters) && !await hasCloudConsent('letters')) throw new Error('Confirm decision-letter import in the Letters tab first.')
-  const letters = input.letters ?? (input.includeLetters === true
-    ? await buildDecisionLetterUploadsForTrack({
-        claims: input.claims,
-        appeals: input.appeals
-      })
-    : [])
+export async function importTrackSnapshotToClaimBuilder(
+  input: VaTrackBridgeCachePayload,
+  accountId: string
+): Promise<ClaimBuilderTrackImportResult> {
+  const session = await readHubSession()
+  if (!session.accessToken || session.accountId !== accountId || !await hasCloudConsent('track', accountId)) {
+    throw new Error('Review your VCH account and approve saving VA data in VA Profile.')
+  }
 
   const base = CLAIMBUILDER_URL.replace(/\/$/, '')
   const response = await fetch(`${base}/api/extension/va-track-import`, {
@@ -44,16 +29,15 @@ export async function importTrackSnapshotToClaimBuilder(input: {
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${session.accessToken}`
     },
     body: JSON.stringify({
       consent: true,
-      consentAt: new Date().toISOString(),
+      accountId,
       claims: input.claims,
       appeals: input.appeals,
       deviceLastSyncedAt: input.deviceLastSyncedAt,
-      vaLabel: input.vaLabel,
-      ...(letters.length ? { letters } : {})
+      vaLabel: input.vaLabel
     })
   })
 
@@ -70,15 +54,12 @@ export async function importTrackSnapshotToClaimBuilder(input: {
     throw new Error(message)
   }
 
-  const letterResult = body.letters && typeof body.letters === 'object'
-    ? body.letters as Record<string, unknown>
-    : null
+  if (body.ok !== true) throw new Error('VCH did not confirm the claim sync. Try again.')
 
   return {
     ok: true,
     importedAt: typeof body.importedAt === 'string' ? body.importedAt : null,
     claimCount: typeof body.claimCount === 'number' ? body.claimCount : input.claims.length,
-    appealCount: typeof body.appealCount === 'number' ? body.appealCount : input.appeals.length,
-    lettersIngested: typeof letterResult?.ingested === 'number' ? letterResult.ingested : letters.length
+    appealCount: typeof body.appealCount === 'number' ? body.appealCount : input.appeals.length
   }
 }

@@ -68,7 +68,10 @@ export default defineBackground(() => {
       if (!ownPage && !bridgePage) return
       void (async () => {
         try {
-          if (!await hasCloudConsent('track')) { sendResponse({ ok: false, error: 'Allow Track sync in the extension Privacy settings.' }); return }
+          if (typeof message.accountId !== 'string' || !message.accountId || !await hasCloudConsent('track', message.accountId)) {
+            sendResponse({ ok: false, error: 'Use Save VA data to your VCH account in the extension’s VA Profile tab first.' })
+            return
+          }
           sendResponse(await readVaTrackBridgeCachePayload())
         } catch {
           sendResponse({

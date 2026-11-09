@@ -2,7 +2,11 @@ import { readHubAccessToken } from './hubSessionRead'
 
 export const PRIVACY_CONSENT_KEY = 'vch-privacy-consent-v1'
 export type CloudScope = 'track' | 'ratings' | 'letters'
-type Consent = { localAcceptedAt?: string, cloud?: Partial<Record<CloudScope, { accountId: string, acceptedAt: string }>> }
+type Consent = {
+  localAcceptedAt?: string
+  cloud?: Partial<Record<CloudScope, { accountId: string, acceptedAt: string }>>
+  profileApprovals?: Record<string, string>
+}
 
 async function readConsent(): Promise<Consent> {
   const stored = await browser.storage.local.get(PRIVACY_CONSENT_KEY)
@@ -30,38 +34,44 @@ async function currentHubAccountId() {
   } catch { return null }
 }
 
-export async function hasCloudConsent(scope: CloudScope) {
+function hasProfileApproval(consent: Consent, accountId: string) {
+  const approvedAt = Date.parse(consent.profileApprovals?.[accountId] ?? '')
+  return Boolean(consent.localAcceptedAt && approvedAt > 0 && approvedAt <= Date.now())
+}
+
+export async function hasVaProfileCloudApproval(accountId: string) {
   try {
-    const consent = await readConsent()
-    const grant = consent.cloud?.[scope]
-    const accountId = grant ? await currentHubAccountId() : null
-    const age = grant ? Date.now() - Date.parse(grant.acceptedAt) : NaN
-    return Boolean(consent.localAcceptedAt && accountId && grant?.accountId === accountId && age >= 0 && age < 30 * 24 * 60 * 60 * 1000)
+    return await currentHubAccountId() === accountId && hasProfileApproval(await readConsent(), accountId)
   } catch { return false }
 }
 
-/** Call only from an explicit confirmation control in extension UI. */
-export async function grantCloudConsent(scope: CloudScope) {
-  return grantCloudConsents([scope])
+export async function hasCloudConsent(scope: CloudScope, expectedAccountId?: string) {
+  try {
+    const consent = await readConsent()
+    const accountId = await currentHubAccountId()
+    if (!accountId || (expectedAccountId && accountId !== expectedAccountId)) return false
+    if (hasProfileApproval(consent, accountId)) return true
+    const grant = consent.cloud?.[scope]
+    const age = grant ? Date.now() - Date.parse(grant.acceptedAt) : NaN
+    return Boolean(consent.localAcceptedAt && grant?.accountId === accountId && age >= 0 && age < 30 * 24 * 60 * 60 * 1000)
+  } catch { return false }
 }
 
-/** One user approval can cover all data categories included in the same save. */
-export async function grantCloudConsents(scopes: CloudScope[], expectedAccountId?: string) {
+/** Called by the first explicitly approved VA Profile save for this account. */
+export async function approveVaProfileCloudSave(expectedAccountId: string) {
   const accountId = await currentHubAccountId()
   const consent = await readConsent()
   if (!accountId || !consent.localAcceptedAt) throw new Error('Enable VA data access and sign in to VCH first.')
-  if (expectedAccountId && expectedAccountId !== accountId) throw new Error('Your VCH account changed. Review the destination account and approve again.')
-  const acceptedAt = new Date().toISOString()
-  const cloud = { ...consent.cloud }
-  for (const scope of scopes) cloud[scope] = { accountId, acceptedAt }
+  if (expectedAccountId !== accountId) throw new Error('Your VCH account changed. Review the destination account and approve again.')
+  if (hasProfileApproval(consent, accountId)) return
   await browser.storage.local.set({ [PRIVACY_CONSENT_KEY]: {
-    ...consent, cloud
+    ...consent, profileApprovals: { ...consent.profileApprovals, [accountId]: new Date().toISOString() }
   } })
 }
 
 export async function revokeCloudConsent() {
   const consent = await readConsent()
-  await browser.storage.local.set({ [PRIVACY_CONSENT_KEY]: { ...consent, cloud: {} } })
+  await browser.storage.local.set({ [PRIVACY_CONSENT_KEY]: { ...consent, cloud: {}, profileApprovals: {} } })
 }
 
 export async function clearVaDataAndConsent() {

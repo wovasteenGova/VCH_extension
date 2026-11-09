@@ -3,8 +3,11 @@ import { EXTENSION_VERSION } from '@/shared/version'
 import VaClaimTrackerTab from './components/VaClaimTrackerTab.vue'
 import PrivacySettings from './components/PrivacySettings.vue'
 import VaProfileTab from './components/VaProfileTab.vue'
-import { hasLocalDataConsent, PRIVACY_CONSENT_KEY } from '@/shared/privacyConsent'
-import VaTrackTab from './components/VaTrackTab.vue'
+import { hasLocalDataConsent, hasVaProfileCloudApproval, PRIVACY_CONSENT_KEY } from '@/shared/privacyConsent'
+import { readHubSession } from '@/shared/hubSessionRead'
+import { readVaTrackBridgeCachePayload } from '@/shared/vaTrackBridgeCache'
+import { saveVaProfileToVch } from '@/shared/vaProfileImport'
+import { claimBuilderTrackClaimsUrl } from '@/shared/urls'
 import HubTab from './components/HubTab.vue'
 import PopupFooterNav from './components/PopupFooterNav.vue'
 import ConnectionStatusBar from './components/ConnectionStatusBar.vue'
@@ -16,6 +19,42 @@ const activeTab = ref('profile')
 const privacyReady = ref(false)
 const localConsent = ref(false)
 const privacyOpen = ref(false)
+const savingVaData = ref(false)
+const trackAfterSave = ref(false)
+const toast = useToast()
+
+watch(activeTab, (tab) => {
+  if (tab !== 'profile') trackAfterSave.value = false
+})
+
+async function openTracker() {
+  trackAfterSave.value = false
+  await browser.tabs.create({ url: claimBuilderTrackClaimsUrl({ source: 'extension', sync: '1' }) })
+}
+
+async function trackOnVch() {
+  if (savingVaData.value) return
+  savingVaData.value = true
+  try {
+    const track = await readVaTrackBridgeCachePayload()
+    if (track.claims.length || track.appeals.length) {
+      const { accountId } = await readHubSession()
+      if (!accountId || !await hasVaProfileCloudApproval(accountId)) {
+        trackAfterSave.value = true
+        activeTab.value = 'profile'
+        return
+      }
+      const result = await saveVaProfileToVch({ approved: false, accountId, track, ratings: null, letters: [] })
+      if (!result.track) throw new Error(result.trackError || 'Could not save claims and appeals.')
+    }
+    await openTracker()
+  } catch (error) {
+    toast.add({ title: 'Could not open Claim Tracker', description: error instanceof Error ? error.message : 'Try again in a moment.', color: 'error' })
+  } finally {
+    savingVaData.value = false
+  }
+}
+
 async function refreshConsent() {
   localConsent.value = await hasLocalDataConsent()
   privacyReady.value = true
@@ -44,12 +83,11 @@ function onFooterBackdropWheel(e: WheelEvent) {
   scrollEl.scrollTop += e.deltaY
 }
 
-const tabs = [
+const tabs = computed(() => [
   { label: 'VA Profile', value: 'profile', icon: 'i-lucide-user-round' },
   { label: 'Claims', value: 'claims', icon: 'i-lucide-clipboard-list' },
-  { label: 'Track', value: 'track', icon: 'i-lucide-radar' },
   { label: 'Hub', value: 'hub', icon: 'i-lucide-house' }
-]
+].map(tab => ({ ...tab, disabled: savingVaData.value })))
 </script>
 
 <template>
@@ -111,9 +149,14 @@ const tabs = [
           <p v-if="!privacyReady" role="status" class="py-4 text-sm text-muted">Loading your privacy preferences…</p>
           <PrivacySettings v-else-if="!localConsent || privacyOpen" :accepted="localConsent" @accepted="acceptedPrivacy" @cleared="clearedPrivacy" @close="privacyOpen = false" />
           <template v-else>
-          <VaProfileTab v-if="activeTab === 'profile'" @privacy="privacyOpen = true" />
-          <VaClaimTrackerTab v-if="activeTab === 'claims'" />
-          <VaTrackTab v-if="activeTab === 'track'" />
+          <VaProfileTab
+            v-if="activeTab === 'profile'"
+            :track-after-save="trackAfterSave"
+            @privacy="privacyOpen = true"
+            @saving="savingVaData = $event"
+            @track="openTracker"
+          />
+          <VaClaimTrackerTab v-if="activeTab === 'claims'" :tracking="savingVaData" @track="trackOnVch" />
           <HubTab v-if="activeTab === 'hub'" />
           </template>
         </div>

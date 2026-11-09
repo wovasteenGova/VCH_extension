@@ -2,10 +2,10 @@ import { DEFAULT_HUB_ORIGIN, hubUrlOnOrigin } from './hubOrigins'
 
 export const VCH_HUB_URL = DEFAULT_HUB_ORIGIN
 export const CLAIMBUILDER_URL = 'https://claimbuilder.veteranscentralhub.com'
-export const CLAIMBUILDER_TRACK_CLAIMS_PATH = '/track-claims'
+const TRACK_CLAIMS_URL = 'https://extension.veteranscentralhub.com/'
 
 export function claimBuilderTrackClaimsUrl(query?: Record<string, string>) {
-  const base = `${CLAIMBUILDER_URL.replace(/\/$/, '')}${CLAIMBUILDER_TRACK_CLAIMS_PATH}`
+  const base = TRACK_CLAIMS_URL
   if (!query || !Object.keys(query).length) return base
   const params = new URLSearchParams(query)
   return `${base}?${params.toString()}`

@@ -1,5 +1,5 @@
 import { hasCloudConsent } from './privacyConsent'
-import { readHubAccessToken } from './hubSessionRead'
+import { readHubAccessToken, readHubSession } from './hubSessionRead'
 import type { ParsedVaRating } from './vaRatingParse'
 import type { ParsedVaUserProfileForImport } from './vaUserProfileParse'
 import { CLAIMBUILDER_URL } from './urls'
@@ -53,12 +53,12 @@ export function buildClaimBuilderVaImportPayload(input: {
 }
 
 export async function importVaRatingsToClaimBuilder(
-  payload: ClaimBuilderVaImportPayload
+  payload: ClaimBuilderVaImportPayload,
+  accountId: string
 ): Promise<ClaimBuilderVaImportResult> {
-  if (!await hasCloudConsent('ratings')) throw new Error('Confirm the ratings import before sharing data with VCH.')
-  const token = await readHubAccessToken()
-  if (!token) {
-    throw new Error('Could not read your Hub sign-in from this browser. Open veteranscentralhub.com, sign in, then try again.')
+  const { accessToken: token, accountId: currentAccountId } = await readHubSession()
+  if (!token || currentAccountId !== accountId || !await hasCloudConsent('ratings', accountId)) {
+    throw new Error('Review your VCH account and approve saving VA data in VA Profile.')
   }
 
   const base = CLAIMBUILDER_URL.replace(/\/$/, '')

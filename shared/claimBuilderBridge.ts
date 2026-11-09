@@ -24,6 +24,7 @@ export type VchClaimBuilderTrackCacheRequest = {
   source: typeof VCH_CLAIMBUILDER_PAGE_SOURCE
   type: typeof VCH_PROBE_VA_TRACK_CACHE
   requestId: string
+  accountId?: string
 }
 
 export type VchClaimBuilderTrackCacheResponse = {
@@ -66,4 +67,5 @@ export function isClaimBuilderTrackCacheRequest(data: unknown): data is VchClaim
     && record.type === VCH_PROBE_VA_TRACK_CACHE
     && typeof record.requestId === 'string'
     && record.requestId.length > 0 && record.requestId.length <= 128
+    && (record.accountId === undefined || (typeof record.accountId === 'string' && record.accountId.length > 0 && record.accountId.length <= 128))
 }

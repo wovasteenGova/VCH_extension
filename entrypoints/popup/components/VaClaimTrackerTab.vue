@@ -1,14 +1,8 @@
 <script setup lang="ts">
-import { claimBuilderTrackClaimsUrl } from '@/shared/urls'
 import { openVaClaimsPage } from '@/shared/vaSignInNavigation'
 
-const props = withDefaults(defineProps<{
-  showTrackOnVchButton?: boolean
-  deferNetworkBootstrap?: boolean
-}>(), {
-  showTrackOnVchButton: false,
-  deferNetworkBootstrap: false
-})
+defineProps<{ tracking?: boolean }>()
+const emit = defineEmits<{ track: [] }>()
 import {
   fetchVaClaimDetail,
   fetchVaClaimsList,
@@ -210,11 +204,9 @@ async function bootstrapClaims() {
     // Show saved claims from storage immediately, then refresh from VA.gov in the background.
     await refreshDeviceCacheMeta()
 
-    const vaProbe = !props.deferNetworkBootstrap
-      ? probeVaSession().then((session) => {
-          vaLiveSession.value = session.connected
-        })
-      : Promise.resolve()
+    const vaProbe = probeVaSession().then((session) => {
+      vaLiveSession.value = session.connected
+    })
 
     const restored = await hydrateClaimsFromDevice()
     await vaProbe
@@ -227,14 +219,6 @@ async function bootstrapClaims() {
       }
     }
 
-    if (props.deferNetworkBootstrap) {
-      if (!claims.value.length) {
-        await restoreClaimsFromDevice()
-      }
-      await refreshDeviceCacheMeta()
-      return
-    }
-
     void loadClaims().then(async () => {
       if (!claims.value.length) {
         await restoreClaimsFromDevice()
@@ -244,12 +228,6 @@ async function bootstrapClaims() {
   } finally {
     claimsBootstrapPending.value = false
   }
-}
-
-function openTrackOnVch() {
-  void browser.tabs.create({
-    url: claimBuilderTrackClaimsUrl({ source: 'extension', sync: '1' })
-  })
 }
 
 onMounted(() => {
@@ -309,7 +287,6 @@ function openVaClaims() {
 <template>
   <div class="flex flex-col gap-3 pb-1">
     <UButton
-      v-if="showTrackOnVchButton"
       block
       size="md"
       color="primary"
@@ -317,7 +294,8 @@ function openVaClaims() {
       icon="i-lucide-external-link"
       label="Track on VCH"
       class="font-semibold"
-      @click="openTrackOnVch"
+      :loading="tracking"
+      @click="emit('track')"
     />
 
     <div class="flex items-center justify-between gap-2">

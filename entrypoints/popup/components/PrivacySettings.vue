@@ -1,22 +1,13 @@
 <script setup lang="ts">
-import { acceptLocalDataAccess, clearVaDataAndConsent, grantCloudConsent, hasCloudConsent, revokeCloudConsent } from '@/shared/privacyConsent'
-import { readHubSession } from '@/shared/hubSessionRead'
+import { acceptLocalDataAccess, clearVaDataAndConsent, revokeCloudConsent } from '@/shared/privacyConsent'
 
-const props = defineProps<{ accepted: boolean }>()
+defineProps<{ accepted: boolean }>()
 const emit = defineEmits<{ accepted: [], cleared: [], close: [] }>()
 const localApproval = ref(false)
-const trackApproval = ref(false)
-const trackEnabled = ref(false)
 const busy = ref(false)
 const error = ref('')
 const status = ref('')
-const account = ref('')
 const toast = useToast()
-
-onMounted(async () => {
-  trackEnabled.value = await hasCloudConsent('track')
-  if (props.accepted) account.value = (await readHubSession()).label
-})
 
 async function enableLocal() {
   if (!localApproval.value || busy.value) return
@@ -26,19 +17,9 @@ async function enableLocal() {
   finally { busy.value = false }
 }
 
-async function enableTrack() {
-  if (!trackApproval.value || busy.value) return
-  busy.value = true
-  try { await grantCloudConsent('track'); trackEnabled.value = true; status.value = 'ClaimBuilder can now read your saved claims and appeals for cloud sync.'; toast.add({ title: 'Track sync enabled', color: 'success' }) }
-  catch (caught) { error.value = caught instanceof Error ? caught.message : 'Could not enable cloud sync.'; toast.add({ title: 'Could not enable Track sync', description: error.value, color: 'error' }) }
-  finally { busy.value = false }
-}
-
 async function revoke() {
   try {
     await revokeCloudConsent()
-    trackEnabled.value = false
-    trackApproval.value = false
     status.value = 'Cloud access revoked. Data already saved to VCH remains in your account.'
     toast.add({ title: 'Cloud access revoked', description: status.value, color: 'success' })
   } catch {
@@ -69,18 +50,8 @@ async function clear() {
       <UButton :disabled="!localApproval || busy" :loading="busy" @click="enableLocal">Enable VA data access</UButton>
     </template>
     <template v-else>
-      <div class="space-y-3 rounded-lg border border-default p-3">
-        <h3 class="font-semibold">Optional ClaimBuilder Track sync</h3>
-        <p>Allow ClaimBuilder and the VCH Track page to receive your saved claims and appeals. Review the cloud sync confirmation there before saving. This permission lasts 30 days for the current VCH account.</p>
-        <p v-if="account" class="text-muted">VCH: {{ account }}</p>
-        <p v-if="trackEnabled" role="status" class="text-success">Track access enabled for this VCH account.</p>
-        <template v-else>
-          <UCheckbox v-model="trackApproval" label="Allow my saved claims and appeals to be shared with my signed-in VCH account." />
-          <UButton :disabled="!trackApproval || busy" :loading="busy" @click="enableTrack">Allow Track sync</UButton>
-        </template>
-        <UButton variant="outline" @click="revoke">Revoke all cloud access</UButton>
-      </div>
-      <p>Ratings and selected decision letters share one Save VA data approval in VA Profile. Only the data included in that save is sent.</p>
+      <p>Approve saving to your VCH account once in VA Profile. That choice covers claims and appeals, unlocked ratings and profile details, and decision letters you select.</p>
+      <UButton variant="outline" @click="revoke">Revoke all cloud access</UButton>
       <UButton color="error" variant="outline" :loading="busy" @click="clear">Clear local VA data and revoke access</UButton>
       <p class="text-xs text-muted">Clearing here removes cached VA data and permissions from this extension. Delete imported documents and cloud data separately in your VCH account. Theme and display preferences are preserved.</p>
     </template>

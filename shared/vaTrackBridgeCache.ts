@@ -15,7 +15,19 @@ export async function readVaTrackBridgeCachePayload(): Promise<VaTrackBridgeCach
   const cache = await readVaDeviceCache()
   return {
     ok: true,
-    claims: cache.claims,
+    claims: cache.claims.map(claim => ({
+      ...claim,
+      trackedItems: (claim.trackedItems ?? []).flatMap(item => {
+        if (!item || typeof item !== 'object') return []
+        const row = item as Record<string, unknown>
+        const fields = ['id', 'displayName', 'status', 'requestedDate', 'suspenseDate', 'receivedDate', 'closedDate']
+        return [Object.fromEntries(fields.flatMap(key =>
+          typeof row[key] === 'string' || (key === 'id' && typeof row[key] === 'number')
+            ? [[key, row[key]]]
+            : []
+        ))]
+      })
+    })),
     appeals: cache.appeals,
     deviceLastSyncedAt: cache.lastSyncedAt,
     vaLabel: cache.vaLabel
