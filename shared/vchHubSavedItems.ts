@@ -6,6 +6,7 @@
 
 import { DEFAULT_HUB_ORIGIN } from '@/shared/hubOrigins'
 import { extensionTabsApi } from '@/shared/extensionTabsApi'
+import { hasLocalDataConsent, HUB_BOOKMARK_CACHE_KEY } from '@/shared/privacyConsent'
 
 export const HUB_SAVED_ITEMS_STORAGE_KEY = 'savedItems' as const
 
@@ -19,6 +20,19 @@ export type HubSavedBookmarkRow = {
   savedAt?: string
   /** First usable image from saved Hub records, if any */
   imageUrl: string | null
+}
+
+export type HubBookmarkSnapshot = { rows: HubSavedBookmarkRow[], totalCount: number }
+
+export async function readHubBookmarkCache(): Promise<HubBookmarkSnapshot | null> {
+  const stored = await browser.storage.local.get(HUB_BOOKMARK_CACHE_KEY).catch(() => ({} as Record<string, unknown>))
+  const snapshot = stored[HUB_BOOKMARK_CACHE_KEY] as HubBookmarkSnapshot | undefined
+  return snapshot && Array.isArray(snapshot.rows) && Number.isFinite(snapshot.totalCount) ? snapshot : null
+}
+
+export async function saveHubBookmarkCache(snapshot: HubBookmarkSnapshot) {
+  if (!await hasLocalDataConsent()) return false
+  return browser.storage.local.set({ [HUB_BOOKMARK_CACHE_KEY]: snapshot }).then(() => true).catch(() => false)
 }
 
 const HUB_TAB_URL_PATTERNS = [
@@ -126,89 +140,33 @@ async function resolveLatestHubTabId(): Promise<number | null> {
   return tabs[0]?.id ?? null
 }
 
-/**
- * Total count of Hub saved rows (matches Hub header total: all categories).
- * Returns 0 when no Hub tab is open (no throw).
- */
-export async function fetchHubSavedItemsTotalCount(): Promise<number> {
-  const scripting =
-    typeof browser !== 'undefined' && browser.scripting ? browser.scripting : null
-  if (!scripting?.executeScript) return 0
-
+/** Take one snapshot of Hub localStorage so the rows and badge count agree. */
+export async function fetchHubBookmarkSnapshot(): Promise<HubBookmarkSnapshot> {
   const tabId = await resolveLatestHubTabId()
-  if (tabId == null) return 0
+  if (tabId == null) throw new HubSavedItemsNoTabError()
 
-  try {
-    const results = await scripting.executeScript({
-      target: { tabId },
-      world: 'ISOLATED',
-      func: (key: string) => {
-        try {
-          const raw = localStorage.getItem(key)
-          if (!raw) return 0
-          const data = JSON.parse(raw) as Record<string, unknown>
-          const cats = ['vetdeals', 'blog', 'services', 'job', 'federal-jobs'] as const
-          let n = 0
-          for (const c of cats) {
-            const list = data[c]
-            if (Array.isArray(list)) n += list.length
-          }
-          return n
-        } catch {
-          return 0
-        }
-      },
-      args: [HUB_SAVED_ITEMS_STORAGE_KEY]
-    })
-    const n = results[0]?.result
-    return typeof n === 'number' && Number.isFinite(n) ? n : 0
-  } catch {
-    return 0
-  }
-}
-
-/**
- * Reads Hub saved listings from an open Hub tab's localStorage.
- * Requires the `scripting` permission and Hub host access in the manifest.
- */
-export async function fetchHubSavedItemBookmarks(max = 500): Promise<HubSavedBookmarkRow[]> {
-  const scripting =
-    typeof browser !== 'undefined' && browser.scripting ? browser.scripting : null
-
-  if (!scripting?.executeScript) {
-    throw new Error('Saved items need the extension scripting permission.')
-  }
-
-  const tabId = await resolveLatestHubTabId()
-  if (tabId == null) {
-    throw new HubSavedItemsNoTabError()
-  }
-
-  const results = await scripting.executeScript({
+  const results = await browser.scripting.executeScript({
     target: { tabId },
     world: 'ISOLATED',
-    func: (key: string) => {
-      try {
-        const raw = localStorage.getItem(key)
-        if (!raw) return null
-        return JSON.parse(raw) as unknown
-      } catch {
-        return null
-      }
-    },
+    func: (key: string) => localStorage.getItem(key),
     args: [HUB_SAVED_ITEMS_STORAGE_KEY]
   })
+  const raw = results[0]?.result
+  if (raw === undefined) throw new HubSavedItemsNoTabError()
+  return parseHubBookmarkSnapshot(raw)
+}
 
-  const first = results[0]
-  const payload = parsePayload(first?.result)
-
+export function parseHubBookmarkSnapshot(raw: string | null): HubBookmarkSnapshot {
+  const payload = parsePayload(raw === null ? null : JSON.parse(raw))
   const hubOrigin = DEFAULT_HUB_ORIGIN
   const rows: HubSavedBookmarkRow[] = []
   const seenUrl = new Set<string>()
+  let totalCount = 0
 
   for (const category of CATEGORIES) {
     const list = payload[category]
     if (!Array.isArray(list)) continue
+    totalCount += list.length
     list.forEach((entry, index) => {
       if (!entry || typeof entry !== 'object') return
       const obj = entry as Record<string, unknown>
@@ -245,5 +203,5 @@ export async function fetchHubSavedItemBookmarks(max = 500): Promise<HubSavedBoo
     return tb - ta
   })
 
-  return rows.slice(0, max)
+  return { rows: rows.slice(0, 500), totalCount }
 }

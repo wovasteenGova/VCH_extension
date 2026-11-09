@@ -1,7 +1,21 @@
 import { CLAIMBUILDER_URL } from './urls'
 import { readHubAccessToken, readHubSession } from './hubSessionRead'
-import { hasCloudConsent } from './privacyConsent'
+import { hasCloudConsent, hasLocalDataConsent } from './privacyConsent'
 import { decisionLetterKey, downloadVaDecisionLetter, type VaLetterIndexRow } from './vaClaimLetters'
+
+const IMPORT_STATUS_CACHE_PREFIX = 'vch-va-letter-status:'
+
+export async function readImportedDecisionLetterKeys(accountId: string): Promise<string[] | null> {
+  const key = IMPORT_STATUS_CACHE_PREFIX + accountId
+  const values = (await browser.storage.local.get(key).catch(() => ({} as Record<string, unknown>)))[key]
+  return Array.isArray(values) && values.every(value => typeof value === 'string') ? values : null
+}
+
+export async function cacheImportedDecisionLetterKeys(accountId: string, keys: string[]) {
+  if (await hasLocalDataConsent()) {
+    await browser.storage.local.set({ [IMPORT_STATUS_CACHE_PREFIX + accountId]: keys }).catch(() => undefined)
+  }
+}
 
 export async function fetchImportedDecisionLetterKeys(accountId: string): Promise<string[]> {
   const session = await readHubSession()

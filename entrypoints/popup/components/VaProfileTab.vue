@@ -278,7 +278,7 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
         }"
       >
         <template #ratings>
-          <VaRatingsTab ref="ratings" />
+          <VaRatingsTab ref="ratings" :active="active && activeProfileTab === 'ratings'" />
         </template>
         <template #letters>
           <VaDecisionLettersTab

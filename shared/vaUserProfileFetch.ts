@@ -3,7 +3,7 @@ import {
   fetchVaServiceHistory,
   fetchVaUser
 } from './vaClient'
-import { readVaDeviceCache, saveVaProfileCache } from './vaDeviceCache'
+import { checkVaCacheEpoch, readVaDeviceCache, saveVaProfileCache } from './vaDeviceCache'
 import { parseVaServiceHistoryForImport } from './vaServiceHistoryParse'
 import {
   mergeVaUserProfileImports,
@@ -12,44 +12,31 @@ import {
   type ParsedVaUserProfileForImport
 } from './vaUserProfileParse'
 
-export async function fetchVaUserProfileForImport(): Promise<ParsedVaUserProfileForImport | null> {
+export async function refreshVaProfileForImport(): Promise<ParsedVaUserProfileForImport | null> {
   const [userResponse, personalResponse, historyResponse] = await Promise.all([
     fetchVaUser(),
     fetchVaPersonalInformation(),
     fetchVaServiceHistory()
   ])
 
-  const fromUser = userResponse.ok
-    ? parseVaUserProfileForClaimBuilder(userResponse.data)
-    : null
-  const fromPersonal = personalResponse.ok
+  const cached = (await readVaDeviceCache()).profile
+  if (!userResponse.ok || !userResponse.ownerEpoch) return cached
+  const { ownerEpoch } = userResponse
+  if (!await checkVaCacheEpoch(ownerEpoch)) return null
+  const fromUser = parseVaUserProfileForClaimBuilder(userResponse.data)
+  const fromPersonal = personalResponse.ok && personalResponse.ownerEpoch === ownerEpoch
     ? parseVaPersonalInformationForImport(personalResponse.data)
     : null
-  const servicePeriods = historyResponse.ok
+  const servicePeriods = historyResponse.ok && historyResponse.ownerEpoch === ownerEpoch
     ? parseVaServiceHistoryForImport(historyResponse.data)
     : []
 
-  return mergeVaUserProfileImports(
+  const live = mergeVaUserProfileImports(
     fromUser,
     fromPersonal,
     servicePeriods.length ? { servicePeriods } : null
   )
-}
-
-export async function hydrateVaProfileFromDevice(): Promise<ParsedVaUserProfileForImport | null> {
-  const cache = await readVaDeviceCache()
-  return cache.profile
-}
-
-export async function refreshVaProfileForImport(): Promise<ParsedVaUserProfileForImport | null> {
-  const cached = await hydrateVaProfileFromDevice()
-  const live = await fetchVaUserProfileForImport()
-  const merged = mergeVaUserProfileImports(cached, live)
-
-  if (merged) {
-    await saveVaProfileCache(merged)
-    return merged
-  }
-
-  return cached
+  if (!live) return cached
+  await saveVaProfileCache(live, ownerEpoch)
+  return await checkVaCacheEpoch(ownerEpoch) ? mergeVaUserProfileImports(cached, live) : null
 }

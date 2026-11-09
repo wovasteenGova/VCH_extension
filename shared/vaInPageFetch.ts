@@ -10,7 +10,7 @@ export function isVaGovPageContext() {
 export async function fetchVaJsonInPage(url: string): Promise<VaFetchResponse> {
   if (!await hasLocalDataConsent()) return { ok: false, status: 0, error: 'Enable VA data access in the VCH extension first.' }
   const result = await requestVa(url)
-  return result.text !== undefined ? parseVaResponse(result.status, result.text) : { ok: false, status: result.status, error: result.error ?? 'Could not reach VA.gov.' }
+  return result.text !== undefined ? parseVaResponse(result.status, result.text, result.ownerEpoch) : { ok: false, status: result.status, error: result.error ?? 'Could not reach VA.gov.' }
 }
 
 export async function fetchVaBinaryInPage(url: string) {

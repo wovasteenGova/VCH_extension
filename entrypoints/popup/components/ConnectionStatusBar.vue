@@ -68,11 +68,11 @@ const brokenBookmarkImages = ref<Record<string, boolean>>({})
 
 const {
   loading: bookmarksLoading,
+  refreshing: bookmarksRefreshing,
   error: bookmarksError,
   rows: bookmarks,
   load: loadBookmarks,
-  totalCount: hubBookmarkCount,
-  refreshTotalCount: refreshHubBookmarksCount
+  totalCount: hubBookmarkCount
 } = useVchBookmarks()
 
 onKeyStroke('Escape', () => {
@@ -88,17 +88,10 @@ function measureBookmarkSheetTop() {
 
 function toggleBookmarks() {
   bookmarksOpen.value = !bookmarksOpen.value
-  if (bookmarksOpen.value) {
-    void nextTick(() => {
-      measureBookmarkSheetTop()
-      void loadBookmarks()
-    })
-  }
 }
 
 function closeBookmarks() {
   bookmarksOpen.value = false
-  void refreshHubBookmarksCount()
 }
 
 const hubBookmarkBadgeText = computed(() => {
@@ -110,8 +103,7 @@ const hubBookmarkBadgeText = computed(() => {
 watch(bookmarksOpen, (open) => {
   if (open) {
     void nextTick(() => measureBookmarkSheetTop())
-  } else {
-    void refreshHubBookmarksCount()
+    void loadBookmarks()
   }
 })
 
@@ -183,7 +175,6 @@ async function refresh() {
     hub.value = { connected: false, label: 'Check Hub sign-in' }
     va.value = { connected: false, label: 'Could not check VA.gov' }
   } finally { loading.value = false }
-  void refreshHubBookmarksCount()
 }
 
 function onHubClick() {
@@ -204,7 +195,6 @@ onMounted(() => {
   const stop = subscribeVaDeviceCache((cache) => applyMeta(cacheMetaFromDevice(cache)))
   onUnmounted(stop)
   void refresh()
-  void refreshHubBookmarksCount()
 })
 
 defineExpose({ refresh })
@@ -272,7 +262,7 @@ defineExpose({ refresh })
         type="button"
         class="relative flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-elevated/60 hover:text-highlighted"
         :class="bookmarksOpen ? 'text-highlighted' : ''"
-        :title="`Bookmarks from Hub${hubBookmarkCount > 0 ? ` (${hubBookmarkCount} saved)` : ''}. Open veteranscentralhub.com in a tab first.`"
+        :title="`Bookmarks from Hub${hubBookmarkCount > 0 ? ` (${hubBookmarkCount} saved)` : ''}`"
         aria-label="Open bookmarks from Hub"
         aria-haspopup="dialog"
         :aria-expanded="bookmarksOpen"
@@ -323,14 +313,14 @@ defineExpose({ refresh })
                   Bookmarks from Hub
                 </p>
                 <p class="mt-1 text-sm leading-snug text-toned">
-                  Open a Hub tab first; this list pulls from that session.
+                  Bookmarks saved in this browser. Changes on the Hub sync here.
                 </p>
               </div>
               <div class="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
                   class="rounded-md p-2.5 text-muted transition hover:bg-elevated/60 hover:text-highlighted"
-                  :disabled="bookmarksLoading"
+                  :disabled="bookmarksRefreshing"
                   aria-label="Refresh list"
                   @click="loadBookmarks"
                 >
@@ -364,7 +354,7 @@ defineExpose({ refresh })
                 class="flex flex-col gap-3 py-2 text-base leading-relaxed text-toned"
               >
                 <p class="text-sm">
-                  No items yet, or no Hub tab open. Save on the Hub, then try again.
+                  No saved items yet. Bookmark a listing on the Hub to see it here.
                 </p>
                 <UButton
                   size="md"

@@ -1,10 +1,15 @@
 import { parseVaAppealsList } from './vaAppealParse'
 import { parseVaClaim, type ParsedVaClaim } from './vaClaimParse'
+import { fetchVaDecisionLetterIndex } from './vaClaimLetters'
 import { unwrapVaList } from './vaClient'
+import { VA_ENDPOINTS } from './vaEndpoints'
+import { parseVaRatingsResponse } from './vaRatingParse'
 import {
   readVaDeviceCache,
   saveVaAppealsCache,
   saveVaClaimsCache,
+  saveVaLettersCache,
+  saveVaRatingsCache,
   touchVaCacheSync
 } from './vaDeviceCache'
 import { fetchVaJsonInPage } from './vaInPageFetch'
@@ -18,8 +23,22 @@ export type VaPageClaimsSyncResult = {
   error?: string
 }
 
-/** Fast claims sync for the VA.gov track-claims bar: in-page fetch only, no ratings/profile. */
+/** The VA.gov Sync button also warms the local ratings and letter list. */
 export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
+  void Promise.allSettled([
+    fetchVaJsonInPage(VA_ENDPOINTS.ratedDisabilities).then(result => {
+      if (!result.ok || !result.ownerEpoch) return
+      const ratings = parseVaRatingsResponse(result.data)
+      return saveVaRatingsCache({
+        combinedRating: ratings.combinedRating,
+        combinedEffectiveDate: ratings.combinedEffectiveDate,
+        rows: ratings.ratings
+      }, result.ownerEpoch)
+    }),
+    fetchVaDecisionLetterIndex().then(({ rows, ownerEpoch }) => {
+      if (ownerEpoch) return saveVaLettersCache(rows, ownerEpoch)
+    })
+  ])
   const [claimsRes, appealsRes] = await Promise.all([
     fetchVaJsonInPage('https://api.va.gov/v0/benefits_claims'),
     fetchVaJsonInPage('https://api.va.gov/v0/appeals')

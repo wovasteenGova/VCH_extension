@@ -70,13 +70,12 @@ async function persistLiveVaCachesOnce(): Promise<VaLiveCachePersistResult> {
 
   if (ratingsRes.ok) {
     const summary = parseVaRatingsResponse(ratingsRes.data)
-    if (summary.ratings.length || summary.combinedRating != null) {
-      await saveVaRatingsCache({
+    if (ratingsRes.ownerEpoch && (summary.ratings.length || summary.combinedRating != null)) {
+      result.ratings = await saveVaRatingsCache({
         combinedRating: summary.combinedRating,
         combinedEffectiveDate: summary.combinedEffectiveDate,
         rows: summary.ratings
-      })
-      result.ratings = true
+      }, ratingsRes.ownerEpoch)
     }
   }
 

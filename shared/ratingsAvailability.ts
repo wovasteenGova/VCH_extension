@@ -1,26 +1,15 @@
-import { probeVaSession, type ConnectionState } from './connectionStatus'
 import { fetchVaRatedDisabilities } from './vaClient'
-import { readVaDeviceCache, type VaDeviceRatingsCache } from './vaDeviceCache'
+import { readVaDeviceCache, saveVaRatingsCache } from './vaDeviceCache'
 import { parseVaRatingsResponse } from './vaRatingParse'
-
-export type RatingsAvailabilityReason = 'va_sign_in' | 'no_ratings' | 'fetch_failed'
 
 export type RatingsAvailability =
   | { available: true, source: 'cache' | 'live' }
-  | { available: false, reason: RatingsAvailabilityReason, message: string }
+  | { available: false, reason: 'va_sign_in' | 'no_ratings' | 'fetch_failed', message: string }
 
-export type RatingsGateState = {
-  vaSession: ConnectionState
-  hasCachedRatings: boolean
-  availability: RatingsAvailability
-}
+export async function assessRatingsAvailability(): Promise<RatingsAvailability> {
+  const { ratings } = await readVaDeviceCache()
+  if (ratings && (ratings.rows.length || ratings.combinedRating != null)) return { available: true, source: 'cache' }
 
-function hasRatingsCacheData(ratings: VaDeviceRatingsCache | null) {
-  return Boolean(ratings && (ratings.rows.length > 0 || ratings.combinedRating != null))
-}
-
-/** Network-only gate check when device cache has no ratings (avoids duplicate storage read). */
-async function assessRatingsAvailabilityFromNetwork(): Promise<RatingsAvailability> {
   const response = await fetchVaRatedDisabilities()
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
@@ -30,17 +19,11 @@ async function assessRatingsAvailabilityFromNetwork(): Promise<RatingsAvailabili
         message: 'Sign in to VA.gov before protecting or viewing disability ratings.'
       }
     }
-
-    return {
-      available: false,
-      reason: 'fetch_failed',
-      message: response.error || 'Could not reach VA.gov right now.'
-    }
+    return { available: false, reason: 'fetch_failed', message: response.error || 'Could not reach VA.gov right now.' }
   }
 
   const summary = parseVaRatingsResponse(response.data)
-  const hasLive = summary.ratings.length > 0 || summary.combinedRating != null
-  if (!hasLive) {
+  if (!summary.ratings.length && summary.combinedRating == null) {
     return {
       available: false,
       reason: 'no_ratings',
@@ -48,32 +31,10 @@ async function assessRatingsAvailabilityFromNetwork(): Promise<RatingsAvailabili
     }
   }
 
-  return { available: true, source: 'live' }
-}
-
-export async function assessRatingsAvailability(): Promise<RatingsAvailability> {
-  const cache = await readVaDeviceCache()
-  if (hasRatingsCacheData(cache.ratings)) {
-    return { available: true, source: 'cache' }
-  }
-
-  return assessRatingsAvailabilityFromNetwork()
-}
-
-export async function refreshRatingsGateState(): Promise<RatingsGateState> {
-  const cache = await readVaDeviceCache()
-  const hasCachedRatings = hasRatingsCacheData(cache.ratings)
-
-  const [vaSession, availability] = await Promise.all([
-    probeVaSession(),
-    hasCachedRatings
-      ? Promise.resolve<RatingsAvailability>({ available: true, source: 'cache' })
-      : assessRatingsAvailabilityFromNetwork()
-  ])
-
-  return {
-    vaSession,
-    hasCachedRatings,
-    availability
-  }
+  const saved = response.ownerEpoch && await saveVaRatingsCache({
+    combinedRating: summary.combinedRating,
+    combinedEffectiveDate: summary.combinedEffectiveDate,
+    rows: summary.ratings
+  }, response.ownerEpoch)
+  return { available: true, source: saved ? 'cache' : 'live' }
 }

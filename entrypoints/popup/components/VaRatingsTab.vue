@@ -1,22 +1,18 @@
 <script setup lang="ts">
 import { buildClaimBuilderVaImportPayload } from '@/shared/claimBuilderVaImport'
-import type { ConnectionState } from '@/shared/connectionStatus'
 import { VA_DISABILITY_RATING_PAGE } from '@/shared/vaEndpoints'
 import { openVaSignIn } from '@/shared/vaSignInNavigation'
 import { fetchVaRatedDisabilities, formatVaDate } from '@/shared/vaClient'
 import { parseVaRatingsResponse, sortRatingsByPercent, type ParsedVaRating } from '@/shared/vaRatingParse'
 import type { ParsedVaUserProfileForImport } from '@/shared/vaUserProfileParse'
-import { hydrateVaProfileFromDevice, refreshVaProfileForImport } from '@/shared/vaUserProfileFetch'
+import { refreshVaProfileForImport } from '@/shared/vaUserProfileFetch'
 import { buildVaImportPreviewItems } from '@/shared/vaImportPreview'
-import { persistLiveVaCaches } from '@/shared/vaCacheSync'
-import { readVaDeviceCache, saveVaRatingsCache } from '@/shared/vaDeviceCache'
-import {
-  assessRatingsAvailability,
-  refreshRatingsGateState,
-  type RatingsAvailability
-} from '@/shared/ratingsAvailability'
+import { checkVaCacheEpoch, isRecentVaDeviceSync, readVaDeviceCache, saveVaRatingsCache, VA_CACHE_OWNER_KEY, VA_DEVICE_CACHE_STORAGE_KEY, type VaDeviceCache } from '@/shared/vaDeviceCache'
+import { assessRatingsAvailability, type RatingsAvailability } from '@/shared/ratingsAvailability'
 import { useRatingsPasskeyLock } from '../composables/useRatingsPasskeyLock'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
+
+const props = defineProps<{ active: boolean }>()
 
 // VA's 2026 base rates (effective December 1, 2025) for a veteran without dependents.
 // https://www.va.gov/disability/compensation-rates/veteran-rates/
@@ -58,11 +54,11 @@ const lastSyncedAt = ref<string | null>(null)
 const rows = ref<ParsedVaRating[]>([])
 const combinedRating = ref<number | null>(null)
 const combinedEffectiveDate = ref<string | undefined>()
-const vaSession = ref<ConnectionState>({ connected: false, label: 'Checking…' })
+const vaConnected = ref(false)
 const importProfilePreview = ref<ParsedVaUserProfileForImport | null>(null)
 const gateChecking = ref(true)
 const profileRefreshing = ref(false)
-const hasCachedRatings = ref(false)
+const manualRefresh = ref(false)
 const ratingsGate = ref<RatingsAvailability>({
   available: false,
   reason: 'va_sign_in',
@@ -77,9 +73,6 @@ const gateMessage = computed(() => {
 })
 
 const emptyUnlockedMessage = computed(() => {
-  if (!vaSession.value.connected && !hasCachedRatings.value) {
-    return 'Passkey verified, but VA.gov is not signed in on this browser and nothing is saved on this device yet.'
-  }
   if (error.value) return error.value
   return 'No disability ratings loaded. Open your disability rating on VA.gov, then refresh here.'
 })
@@ -104,134 +97,97 @@ const currentImportPayload = computed(() => buildClaimBuilderVaImportPayload({
   profile: importProfilePreview.value
 }))
 
+let displayGeneration = 0
+
 async function refreshImportProfilePreview() {
+  if (profileRefreshing.value) return
+  const generation = displayGeneration
   profileRefreshing.value = true
   try {
-    const previous = importProfilePreview.value
-    const next = await refreshVaProfileForImport()
-    importProfilePreview.value = next ?? previous ?? await hydrateVaProfileFromDevice()
-  } finally { profileRefreshing.value = false }
+    const profile = await refreshVaProfileForImport()
+    if (unlocked.value && generation === displayGeneration) importProfilePreview.value = profile
+  } catch {
+    // The saved profile remains available when a background refresh fails.
+  } finally {
+    if (generation === displayGeneration) profileRefreshing.value = false
+  }
 }
 
 async function refreshRatingsAndProfile() {
+  if (ratingsSyncing.value) return
+  manualRefresh.value = true
+  void refreshImportProfilePreview()
   try {
-    const [refreshed] = await Promise.all([loadRatings(), refreshImportProfilePreview()])
-    toast.add(!refreshed
-      ? { title: 'Could not refresh VA ratings', description: error.value ?? 'Showing previously saved ratings.', color: 'warning' }
-      : { title: 'VA ratings refreshed', color: 'success' })
-  } catch (caught) {
-    toast.add({ title: 'Could not refresh VA ratings', description: caught instanceof Error ? caught.message : 'Try again.', color: 'error' })
+    const refreshed = await loadRatings()
+    toast.add(refreshed
+      ? { title: 'VA ratings refreshed', color: 'success' }
+      : { title: 'Could not refresh VA ratings', description: error.value ?? 'Showing previously saved ratings.', color: 'warning' })
+  } finally {
+    manualRefresh.value = false
   }
 }
 
 async function refreshRatingsGate() {
   gateChecking.value = true
-  const gate = await refreshRatingsGateState()
-  vaSession.value = gate.vaSession
-  hasCachedRatings.value = gate.hasCachedRatings
-  ratingsGate.value = gate.availability
-  gateChecking.value = false
-}
-
-async function handleSetupLock() {
-  lockError.value = null
-  const availability = await assessRatingsAvailability()
-  ratingsGate.value = availability
-  if (!availability.available) {
-    lockError.value = availability.message
-    return
+  try {
+    ratingsGate.value = await assessRatingsAvailability()
+    vaConnected.value = ratingsGate.value.available && ratingsGate.value.source === 'live'
+  } catch {
+    ratingsGate.value = { available: false, reason: 'fetch_failed', message: 'Could not check your VA ratings right now.' }
+  } finally {
+    gateChecking.value = false
   }
-  await setupLock()
 }
 
-async function handleUnlock() {
-  lockError.value = null
-
-  if (!hasCachedRatings.value) {
-    const availability = await assessRatingsAvailability()
-    ratingsGate.value = availability
-    if (!availability.available) {
-      lockError.value = availability.message
-      return
-    }
-  }
-
-  await unlock()
-}
-
-function clearRatingsDisplay() {
-  error.value = null
-  isStale.value = false
-  rows.value = []
-  combinedRating.value = null
-  combinedEffectiveDate.value = undefined
-}
-
-async function hydrateRatingsFromDevice() {
-  const cache = await readVaDeviceCache()
-  lastSyncedAt.value = cache.lastSyncedAt
-  if (!cache.ratings) return false
-  combinedRating.value = cache.ratings.combinedRating
-  combinedEffectiveDate.value = cache.ratings.combinedEffectiveDate
-  rows.value = sortRatingsByPercent(cache.ratings.rows)
-  return cache.ratings.rows.length > 0 || cache.ratings.combinedRating != null
+function applyRatings(ratings: VaDeviceCache['ratings'], syncedAt: string | null) {
+  combinedRating.value = ratings?.combinedRating ?? null
+  combinedEffectiveDate.value = ratings?.combinedEffectiveDate
+  rows.value = sortRatingsByPercent(ratings?.rows ?? [])
+  lastSyncedAt.value = ratings?.fetchedAt ?? syncedAt
 }
 
 async function loadRatings() {
-  if (!unlocked.value) return false
-
+  if (!unlocked.value || ratingsSyncing.value) return false
+  const generation = displayGeneration
   error.value = null
   ratingsSyncing.value = true
   loading.value = !hasRatingsData.value
 
-  const hadDataBeforeFetch = hasRatingsData.value
-  if (!hadDataBeforeFetch) {
-    const hydrated = await hydrateRatingsFromDevice()
-    if (hydrated) {
-      hasCachedRatings.value = true
-      isStale.value = !vaSession.value.connected
-      error.value = null
-    }
-  }
-
   try {
     const response = await fetchVaRatedDisabilities()
-
+    if (!unlocked.value || generation !== displayGeneration) return false
     if (!response.ok) {
-      const restored = await hydrateRatingsFromDevice()
-      hasCachedRatings.value = restored
-      if (restored || hasRatingsData.value) {
-        isStale.value = !vaSession.value.connected
-        error.value = null
-        return false
-      }
-      isStale.value = false
-      clearRatingsDisplay()
-      error.value = response.error
-      void refreshRatingsGate()
+      vaConnected.value = false
+      isStale.value = hasRatingsData.value
+      if (!hasRatingsData.value) error.value = response.error
       return false
     }
 
     const summary = parseVaRatingsResponse(response.data)
-    combinedRating.value = summary.combinedRating
-    combinedEffectiveDate.value = summary.combinedEffectiveDate
-    rows.value = sortRatingsByPercent(summary.ratings)
+    if (response.ownerEpoch && !await checkVaCacheEpoch(response.ownerEpoch)) return false
+    if (!unlocked.value || generation !== displayGeneration) return false
+    vaConnected.value = true
     isStale.value = false
-
-    await saveVaRatingsCache({
-      combinedRating: combinedRating.value,
-      combinedEffectiveDate: combinedEffectiveDate.value,
-      rows: rows.value
-    })
-    hasCachedRatings.value = true
-    ratingsGate.value = { available: true, source: 'live' }
-    await persistLiveVaCaches()
-    const cache = await readVaDeviceCache()
-    lastSyncedAt.value = cache.lastSyncedAt
+    const ratings = {
+      combinedRating: summary.combinedRating,
+      combinedEffectiveDate: summary.combinedEffectiveDate,
+      rows: summary.ratings,
+      fetchedAt: new Date().toISOString()
+    }
+    applyRatings(ratings, null)
+    if (response.ownerEpoch) await saveVaRatingsCache(ratings, response.ownerEpoch)
     return true
+  } catch {
+    if (generation === displayGeneration) {
+      isStale.value = hasRatingsData.value
+      if (!hasRatingsData.value) error.value = 'Could not read VA ratings.'
+    }
+    return false
   } finally {
-    ratingsSyncing.value = false
-    loading.value = false
+    if (generation === displayGeneration) {
+      ratingsSyncing.value = false
+      loading.value = false
+    }
   }
 }
 
@@ -239,34 +195,55 @@ function openVaDisabilityRating() {
   void browser.tabs.create({ url: VA_DISABILITY_RATING_PAGE })
 }
 
+function clearRatingsDisplay() {
+  displayGeneration++
+  error.value = null
+  isStale.value = false
+  loading.value = false
+  ratingsSyncing.value = false
+  profileRefreshing.value = false
+  applyRatings(null, null)
+  importProfilePreview.value = null
+}
+
 function lockRatings() {
   lock()
   clearRatingsDisplay()
 }
 
-watch(unlocked, async (isUnlocked) => {
-  if (isUnlocked) {
-    const restored = await hydrateRatingsFromDevice()
-    hasCachedRatings.value = restored
-    if (restored) {
-      isStale.value = !vaSession.value.connected
-      error.value = null
-    }
-    importProfilePreview.value = await hydrateVaProfileFromDevice()
-    void refreshImportProfilePreview()
-    void loadRatings()
-  } else {
-    clearRatingsDisplay()
-    importProfilePreview.value = null
-  }
+watch(unlocked, (isUnlocked) => {
+  if (!isUnlocked) clearRatingsDisplay()
+}, { flush: 'sync' })
+
+watch([unlocked, () => props.active], async ([isUnlocked, active]) => {
+  if (!isUnlocked || !active) return
+  const generation = displayGeneration
+  const cache = await readVaDeviceCache()
+  if (!unlocked.value || generation !== displayGeneration) return
+  if (cache.ratings && !hasRatingsData.value) applyRatings(cache.ratings, cache.lastSyncedAt)
+  importProfilePreview.value ??= cache.profile
+  const fresh = isRecentVaDeviceSync(cache.ratings?.fetchedAt)
+  if (!fresh || !importProfilePreview.value) void refreshImportProfilePreview()
+  if (!fresh || !hasRatingsData.value) void loadRatings()
 })
 
 onMounted(async () => {
   const onStorage = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
-    if (area === 'local' && changes['vch-va-device-cache-v1'] && !changes['vch-va-device-cache-v1']!.newValue) {
+    if (area !== 'local') return
+    const change = changes[VA_DEVICE_CACHE_STORAGE_KEY]
+    if (changes[VA_CACHE_OWNER_KEY] || (change && !change.newValue)) {
       lockRatings()
-      clearRatingsDisplay()
-      importProfilePreview.value = null
+      if (!gateChecking.value) void refreshRatingsGate()
+      return
+    }
+    const cache = change?.newValue as VaDeviceCache | undefined
+    const previous = change?.oldValue as VaDeviceCache | undefined
+    if (cache?.ratings && cache.ratings.fetchedAt !== previous?.ratings?.fetchedAt) {
+      ratingsGate.value = { available: true, source: 'cache' }
+      if (unlocked.value) {
+        applyRatings(cache.ratings, cache.lastSyncedAt)
+        isStale.value = false
+      }
     }
   }
   browser.storage.onChanged.addListener(onStorage)
@@ -274,10 +251,8 @@ onMounted(async () => {
   await Promise.all([init(), refreshRatingsGate()])
 })
 
-onUnmounted(() => {
-  lockRatings()
-})
-const ready = computed(() => unlocked.value && hasRatingsData.value && !loading.value && !ratingsSyncing.value && !profileRefreshing.value)
+onUnmounted(lockRatings)
+const ready = computed(() => unlocked.value && hasRatingsData.value)
 defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPayload })
 </script>
 
@@ -303,7 +278,8 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
           color="neutral"
           variant="ghost"
           icon="i-lucide-refresh-cw"
-          :loading="ratingsSyncing"
+          :loading="manualRefresh"
+          :disabled="ratingsSyncing"
           aria-label="Refresh ratings"
           @click="refreshRatingsAndProfile"
         />
@@ -409,7 +385,7 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
         leading-icon="i-lucide-fingerprint"
         :loading="lockBusy"
         :label="hasCredential ? 'Open with passkey' : 'Set up passkey'"
-        @click="hasCredential ? handleUnlock() : handleSetupLock()"
+        @click="hasCredential ? unlock() : setupLock()"
       />
 
       <button
@@ -461,7 +437,7 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
           </p>
         </div>
         <UButton
-          v-if="!vaSession.connected"
+          v-if="!vaConnected"
           block
           size="md"
           color="primary"
@@ -471,8 +447,8 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
         <UButton
           block
           size="md"
-          :color="vaSession.connected ? 'primary' : 'neutral'"
-          :variant="vaSession.connected ? 'solid' : 'outline'"
+          :color="vaConnected ? 'primary' : 'neutral'"
+          :variant="vaConnected ? 'solid' : 'outline'"
           label="Open disability rating"
           @click="openVaDisabilityRating"
         />

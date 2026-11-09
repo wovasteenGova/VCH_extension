@@ -16,6 +16,7 @@ export type VaDeviceRatingsCache = {
   combinedRating: number | null
   combinedEffectiveDate?: string
   rows: ParsedVaRating[]
+  fetchedAt?: string
 }
 
 export type VaDeviceCache = {
@@ -175,7 +176,9 @@ export function applyVaCacheMutation(mutation: CacheMutation): Promise<boolean> 
     let patch: Partial<VaDeviceCache>
     if (field === 'claims' && Array.isArray(value)) patch = { claims: mergeParsedClaims(current.claims, value) }
     else if (field === 'appeals' && Array.isArray(value)) patch = { appeals: value }
-    else if (field === 'ratings' && value && typeof value === 'object' && Array.isArray((value as VaDeviceRatingsCache).rows)) patch = { ratings: value as VaDeviceRatingsCache }
+    else if (field === 'ratings' && value && typeof value === 'object' && Array.isArray((value as VaDeviceRatingsCache).rows)) {
+      patch = { ratings: { ...(value as VaDeviceRatingsCache), fetchedAt: new Date().toISOString() } }
+    }
     else if (field === 'profile' && value && typeof value === 'object') patch = { profile: mergeVaUserProfileImports(current.profile, value as ParsedVaUserProfileForImport) }
     else if (field === 'letters' && Array.isArray(value)) patch = { letters: { rows: value, fetchedAt: new Date().toISOString() } }
     else if (field === 'meta' && value && typeof value === 'object') {
@@ -202,8 +205,8 @@ export async function touchVaCacheSync(meta?: { vaLabel?: string | null }) {
 }
 export function saveVaClaimsCache(claims: ParsedVaClaim[]) { return mutateCache({ field: 'claims', value: claims }) }
 export function saveVaAppealsCache(appeals: ParsedVaAppeal[]) { return mutateCache({ field: 'appeals', value: appeals }) }
-export function saveVaRatingsCache(ratings: VaDeviceRatingsCache) { return mutateCache({ field: 'ratings', value: ratings }) }
-export async function saveVaProfileCache(profile: ParsedVaUserProfileForImport) { await mutateCache({ field: 'profile', value: profile }) }
+export function saveVaRatingsCache(ratings: VaDeviceRatingsCache, ownerEpoch?: string) { return mutateCache({ field: 'ratings', value: ratings, ownerEpoch }) }
+export function saveVaProfileCache(profile: ParsedVaUserProfileForImport, ownerEpoch: string) { return mutateCache({ field: 'profile', value: profile, ownerEpoch }) }
 export function saveVaLettersCache(rows: VaLetterIndexRow[], ownerEpoch: string) { return mutateCache({ field: 'letters', value: rows, ownerEpoch }) }
 
 export function formatLastSynced(value: string | null | undefined) {
