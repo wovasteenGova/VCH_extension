@@ -13,7 +13,7 @@ const VA_FETCH_HEADERS: Record<string, string> = {
   'X-Key-Inflection': 'camel'
 }
 
-function parseVaResponse(status: number, text: string): VaFetchResponse {
+function parseVaResponse(status: number, text: string, ownerEpoch?: string): VaFetchResponse {
   let data: unknown = null
   if (text) {
     try {
@@ -24,7 +24,7 @@ function parseVaResponse(status: number, text: string): VaFetchResponse {
   }
 
   if (status >= 200 && status < 300) {
-    return { ok: true, status, data }
+    return { ok: true, status, data, ...(ownerEpoch ? { ownerEpoch } : {}) }
   }
 
   const record = data as { errors?: Array<{ detail?: string, title?: string }> } | null
@@ -93,7 +93,7 @@ export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | n
     }
 
     if (record.ok === false && !record.text) return { ok: false, status: record.status, error: record.error ?? 'Could not reach VA.gov.' }
-    return parseVaResponse(record.status, typeof record.text === 'string' ? record.text : '')
+    return parseVaResponse(record.status, typeof record.text === 'string' ? record.text : '', record.ownerEpoch)
   } catch {
     // Tabs opened before installation need the bundled isolated-world proxy.
     // Never execute remote code or an unrestricted fetch in the website's MAIN world.
@@ -101,7 +101,7 @@ export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | n
       await browser.scripting.executeScript({ target: { tabId }, files: ['/content-scripts/va-api-proxy.js'] })
       const result = await tabsApi.sendMessage(tabId, { type: 'VA_API_FETCH', url })
       adoptVaCacheEpoch(result?.ownerEpoch)
-      if (result?.text !== undefined) return parseVaResponse(result.status, result.text)
+      if (result?.text !== undefined) return parseVaResponse(result.status, result.text, result.ownerEpoch)
       return { ok: false, status: 0, error: result?.error ?? 'Refresh your VA.gov tab and try again.' }
     } catch { return { ok: false, status: 0, error: 'Refresh your VA.gov tab and try again.' } }
   }

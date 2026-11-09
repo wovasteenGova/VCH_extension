@@ -51,6 +51,7 @@ describe('shared VA Profile approval', () => {
     expect(result).toMatchObject({ ratingsSaved: true, lettersSaved: 2, lettersTotal: 2 })
     expect(describeVaProfileImport(result).color).toBe('success')
     expect((await readVaProfileSyncState('account-a')).lastSyncedAt).toBeTruthy()
+    expect((await readVaProfileSyncState('account-a')).importedLetterKeys).toEqual(['one:184', 'two:184'])
     expect(await readVaProfileSyncState('account-b')).toEqual({})
   })
   it('reuses the saved approval for Track on VCH and sends only claims and appeals', async () => {
@@ -102,6 +103,7 @@ describe('shared VA Profile approval', () => {
     const result = await saveVaProfileToVch(selection, { letter: event })
     expect(result).toMatchObject({ ratingsSaved: false, ratingsError: 'Ratings service unavailable', lettersSaved: 1, lettersTotal: 2 })
     expect(result.letterResults.map(row => row.ok)).toEqual([true, false])
+    expect((await readVaProfileSyncState('account-a')).importedLetterKeys).toEqual(['one:184'])
     expect(event).toHaveBeenCalledTimes(2)
     expect(describeVaProfileImport(result)).toMatchObject({ color: 'warning', title: 'Some VA data could not be saved' })
   })

@@ -15,6 +15,7 @@ export const VA_ENDPOINTS = {
 
 /** Primary VA.gov entry: sign-in redirect lands here and unlocks the claims API. */
 export const VA_TRACK_CLAIMS_PAGE = 'https://www.va.gov/track-claims/your-claims/'
+export const VA_CLAIM_LETTERS_PAGE = 'https://www.va.gov/track-claims/your-claim-letters'
 
 export const VA_MY_VA_PAGE = 'https://www.va.gov/my-va/'
 

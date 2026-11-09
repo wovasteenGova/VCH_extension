@@ -7,6 +7,8 @@ import {
   isVaGovPageContext
 } from './vaInPageFetch'
 import { fetchBinaryViaVaGovTab } from './vaGovTabFetch'
+import { requestVa } from './vaRequest'
+import type { VaFetchResponse } from './messaging'
 
 export type TrackLetterUploadPayload = {
   entityKind: 'claim' | 'appeal'
@@ -270,9 +272,13 @@ function resolveEntityForLetter(
 }
 
 
+export function decisionLetterKey(row: VaLetterIndexRow) {
+  return `${letterRowId(row) ?? ''}:${row.document_type ?? ''}`
+}
+
 const VA_CLAIM_LETTERS_INDEX = 'https://api.va.gov/v0/claim_letters'
 
-async function fetchClaimLettersIndexPage(page: number) {
+async function fetchClaimLettersIndexPage(page: number): Promise<VaFetchResponse> {
   const url = `${VA_CLAIM_LETTERS_INDEX}?page=${page}`
   if (isVaGovPageContext()) {
     return fetchVaJsonInPage(url)
@@ -281,19 +287,22 @@ async function fetchClaimLettersIndexPage(page: number) {
 }
 
 /** Paginated GET /v0/claim_letters (same index used by VA.gov). */
-export async function listVaDecisionLetters(): Promise<VaLetterIndexRow[]> {
+export async function fetchVaDecisionLetterIndex() {
   const all: VaLetterIndexRow[] = []
   const seen = new Set<string>()
   let totalPages = 1
+  let ownerEpoch: string | undefined
 
   for (let page = 1; page <= totalPages && page <= 100; page++) {
     const res = await fetchClaimLettersIndexPage(page)
     if (!res.ok) throw new Error(res.error)
+    if (page === 1) ownerEpoch = res.ownerEpoch
+    else if (ownerEpoch !== res.ownerEpoch) throw new Error('Your VA.gov account changed. Refresh the letter list and try again.')
 
     totalPages = claimLettersTotalPages(res.data)
     const rows = unwrapLetterRows(res.data).filter(isDecisionLetterRow)
     for (const row of rows) {
-      const key = `${letterRowId(row) ?? ''}:${row.document_type ?? ''}`
+      const key = decisionLetterKey(row)
       if (seen.has(key)) continue
       seen.add(key)
       all.push(row)
@@ -302,7 +311,11 @@ export async function listVaDecisionLetters(): Promise<VaLetterIndexRow[]> {
     if (page >= totalPages) break
   }
 
-  return all
+  return { rows: all, ownerEpoch }
+}
+
+export async function listVaDecisionLetters(): Promise<VaLetterIndexRow[]> {
+  return (await fetchVaDecisionLetterIndex()).rows
 }
 
 export async function downloadVaDecisionLetter(row: VaLetterIndexRow): Promise<string> {
@@ -311,7 +324,7 @@ export async function downloadVaDecisionLetter(row: VaLetterIndexRow): Promise<s
   if (!documentId || !docType || !/^\d{1,6}$/.test(docType)) throw new Error('VA did not provide a downloadable document ID and type.')
   // This is the same authenticated endpoint used by VA.gov's letter download UI.
   const url = `${VA_CLAIM_LETTERS_INDEX}/${encodeURIComponent(documentId)}?document_type=${encodeURIComponent(docType)}`
-  const result = isVaGovPageContext() ? await fetchVaBinaryInPage(url) : await fetchBinaryViaVaGovTab(url)
+  const result = isVaGovPageContext() ? await fetchVaBinaryInPage(url) : await fetchBinaryViaVaGovTab(url) ?? await requestVa(url, true)
   if (!result?.ok || !result.base64) throw new Error(result?.error ?? 'Open VA.gov, sign in, and try downloading this letter again.')
   return result.base64
 }

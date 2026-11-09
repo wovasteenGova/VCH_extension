@@ -39,6 +39,12 @@ describe('VA decision-letter discovery and import', () => {
     await expect(listVaDecisionLetters()).rejects.toThrow('Sign in')
   })
 
+  it('does not combine pages from different VA accounts', async () => {
+    vi.mocked(vaFetch).mockResolvedValueOnce({ ok: true, status: 200, ownerEpoch: 'a', data: { data: [entry('one', 184)], meta: { pagination: { totalPages: 2 } } } })
+      .mockResolvedValueOnce({ ok: true, status: 200, ownerEpoch: 'b', data: { data: [entry('two', 27)] } })
+    await expect(listVaDecisionLetters()).rejects.toThrow('VA.gov account changed')
+  })
+
   it('uses the same PDF endpoint and numeric document_type as VA.gov', async () => {
     vi.mocked(fetchBinaryViaVaGovTab).mockResolvedValue({ ok: true, status: 200, base64: btoa('%PDF-1.7') })
     await expect(downloadVaDecisionLetter(rowFromClaimLetterEntry(entry('{letter-id}', 27))!)).resolves.toBe(btoa('%PDF-1.7'))

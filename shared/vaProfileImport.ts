@@ -4,7 +4,7 @@ import { importTrackSnapshotToClaimBuilder, type ClaimBuilderTrackImportResult }
 import { readVaTrackBridgeCachePayload, type VaTrackBridgeCachePayload } from './vaTrackBridgeCache'
 import { importVaRatingsToClaimBuilder, type ClaimBuilderVaImportPayload } from './claimBuilderVaImport'
 import { sendDecisionLetterToVch } from './decisionLetterImport'
-import type { VaLetterIndexRow } from './vaClaimLetters'
+import { decisionLetterKey, type VaLetterIndexRow } from './vaClaimLetters'
 
 export type LetterImportOutcome = { row: VaLetterIndexRow, ok: boolean, message: string }
 export type VaProfileImportResult = {
@@ -18,7 +18,7 @@ export type VaProfileImportResult = {
 }
 
 export const VA_PROFILE_SYNC_STATE_PREFIX = 'vch-va-profile-sync:'
-type VaProfileSyncState = { lastSyncedAt?: string, trackFingerprint?: string }
+type VaProfileSyncState = { lastSyncedAt?: string, trackFingerprint?: string, importedLetterKeys?: string[] }
 
 export async function readVaProfileSyncState(accountId: string): Promise<VaProfileSyncState> {
   const key = VA_PROFILE_SYNC_STATE_PREFIX + accountId
@@ -77,6 +77,7 @@ async function saveApprovedVaData(
     throw new Error('Sync claims, unlock ratings, or select decision letters to save.')
   }
   const syncState = await readVaProfileSyncState(input.accountId)
+  const importedLetterKeys = new Set(syncState.importedLetterKeys)
   if (track) {
     try {
       const fingerprint = await trackFingerprint(track)
@@ -105,6 +106,7 @@ async function saveApprovedVaData(
     try {
       const saved = await sendDecisionLetterToVch(row, input.accountId)
       outcome = { row, ok: true, message: saved.duplicate ? 'Already in your VCH library' : 'Saved to your VCH library' }
+      importedLetterKeys.add(decisionLetterKey(row))
       result.lettersSaved++
     } catch (error) {
       outcome = { row, ok: false, message: error instanceof Error ? error.message : 'Could not save this letter. Try again.' }
@@ -116,6 +118,7 @@ async function saveApprovedVaData(
     // A revoked or replaced approval must not receive an in-flight receipt.
     const current = await readVaProfileCloudApproval(input.accountId)
     if (current?.acceptedAt === approval.acceptedAt) {
+      if (result.lettersSaved) syncState.importedLetterKeys = [...importedLetterKeys]
       await browser.storage.local.set({
         [VA_PROFILE_SYNC_STATE_PREFIX + input.accountId]: { ...syncState, lastSyncedAt: new Date().toISOString() }
       }).catch(() => undefined)

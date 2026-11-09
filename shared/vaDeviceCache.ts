@@ -1,6 +1,7 @@
 import { hasLocalDataConsent, revokeCloudConsent } from './privacyConsent'
 import { currentVaCacheEpoch } from './vaAccount'
 import type { ParsedVaAppeal } from './vaAppealParse'
+import type { VaLetterIndexRow } from './vaClaimLetters'
 import { mergeParsedClaims, type ParsedVaClaim } from './vaClaimParse'
 import type { ParsedVaRating } from './vaRatingParse'
 import type { ParsedVaUserProfileForImport } from './vaUserProfileParse'
@@ -24,6 +25,7 @@ export type VaDeviceCache = {
   appeals: ParsedVaAppeal[]
   ratings: VaDeviceRatingsCache | null
   profile: ParsedVaUserProfileForImport | null
+  letters: { rows: VaLetterIndexRow[], fetchedAt: string } | null
 }
 
 const EMPTY_CACHE: VaDeviceCache = {
@@ -32,7 +34,8 @@ const EMPTY_CACHE: VaDeviceCache = {
   claims: [],
   appeals: [],
   ratings: null,
-  profile: null
+  profile: null,
+  letters: null
 }
 
 export function parseVaDeviceCacheRecord(raw: unknown): VaDeviceCache {
@@ -48,7 +51,8 @@ export function parseVaDeviceCacheRecord(raw: unknown): VaDeviceCache {
       : null,
     profile: record.profile && typeof record.profile === 'object'
       ? record.profile as ParsedVaUserProfileForImport
-      : null
+      : null,
+    letters: Array.isArray(record.letters?.rows) && typeof record.letters.fetchedAt === 'string' ? record.letters : null
   }
 }
 
@@ -138,7 +142,7 @@ export function describeSavedVaCache(meta: VaCacheMeta) {
 }
 
 export const VA_CACHE_WRITE = 'VCH_VA_CACHE_WRITE'
-type CacheMutation = { field: 'claims' | 'appeals' | 'ratings' | 'profile' | 'meta', value: unknown, ownerEpoch?: string | null }
+type CacheMutation = { field: 'claims' | 'appeals' | 'ratings' | 'profile' | 'letters' | 'meta', value: unknown, ownerEpoch?: string | null }
 let writes: Promise<unknown> = Promise.resolve()
 
 export async function checkVaCacheEpoch(epoch: unknown) {
@@ -173,20 +177,21 @@ export function applyVaCacheMutation(mutation: CacheMutation): Promise<boolean> 
     else if (field === 'appeals' && Array.isArray(value)) patch = { appeals: value }
     else if (field === 'ratings' && value && typeof value === 'object' && Array.isArray((value as VaDeviceRatingsCache).rows)) patch = { ratings: value as VaDeviceRatingsCache }
     else if (field === 'profile' && value && typeof value === 'object') patch = { profile: mergeVaUserProfileImports(current.profile, value as ParsedVaUserProfileForImport) }
+    else if (field === 'letters' && Array.isArray(value)) patch = { letters: { rows: value, fetchedAt: new Date().toISOString() } }
     else if (field === 'meta' && value && typeof value === 'object') {
       const label = (value as { vaLabel?: unknown }).vaLabel
       patch = typeof label === 'string' || label === null ? { vaLabel: label } : {}
     } else return false
     // Re-check immediately before writing in case the user revoked access during a read.
     if (!await hasLocalDataConsent()) return false
-    return storageSet({ ...current, ...patch, lastSyncedAt: new Date().toISOString() })
+    return storageSet({ ...current, ...patch, lastSyncedAt: field === 'letters' ? current.lastSyncedAt : new Date().toISOString() })
   }).catch(() => false)
   writes = next
   return next
 }
 
 async function mutateCache(mutation: CacheMutation): Promise<boolean> {
-  mutation.ownerEpoch = currentVaCacheEpoch()
+  mutation.ownerEpoch ??= currentVaCacheEpoch()
   if (typeof window === 'undefined') return applyVaCacheMutation(mutation)
   try { return (await browser.runtime.sendMessage({ type: VA_CACHE_WRITE, mutation }))?.ok === true }
   catch { return false }
@@ -199,6 +204,7 @@ export function saveVaClaimsCache(claims: ParsedVaClaim[]) { return mutateCache(
 export function saveVaAppealsCache(appeals: ParsedVaAppeal[]) { return mutateCache({ field: 'appeals', value: appeals }) }
 export function saveVaRatingsCache(ratings: VaDeviceRatingsCache) { return mutateCache({ field: 'ratings', value: ratings }) }
 export async function saveVaProfileCache(profile: ParsedVaUserProfileForImport) { await mutateCache({ field: 'profile', value: profile }) }
+export function saveVaLettersCache(rows: VaLetterIndexRow[], ownerEpoch: string) { return mutateCache({ field: 'letters', value: rows, ownerEpoch }) }
 
 export function formatLastSynced(value: string | null | undefined) {
   if (!value) return null
@@ -226,7 +232,7 @@ export function subscribeVaDeviceCache(listener: (cache: VaDeviceCache) => void)
   return () => browser.storage.onChanged.removeListener(handler)
 }
 
-const FRESH_DEVICE_SYNC_MS = 15 * 60 * 1000
+export const FRESH_DEVICE_SYNC_MS = 15 * 60 * 1000
 
 export function isRecentVaDeviceSync(lastSyncedAt: string | null | undefined, maxAgeMs = FRESH_DEVICE_SYNC_MS) {
   if (!lastSyncedAt) return false

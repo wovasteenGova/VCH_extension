@@ -5,7 +5,7 @@ import { fetchViaVaGovTab, parseVaResponse } from './vaGovTabFetch'
 
 async function vaFetchDirect(url: string): Promise<VaFetchResponse> {
   const result = await requestVa(url)
-  return result.text !== undefined ? parseVaResponse(result.status, result.text) : { ok: false, status: result.status, error: result.error ?? 'Could not reach VA.gov.' }
+  return result.text !== undefined ? parseVaResponse(result.status, result.text, result.ownerEpoch) : { ok: false, status: result.status, error: result.error ?? 'Could not reach VA.gov.' }
 }
 
 export async function vaFetch(url: string): Promise<VaFetchResponse> {

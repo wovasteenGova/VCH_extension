@@ -49,4 +49,15 @@ describe('VA cache correctness', () => {
     expect(await applyVaCacheMutation({ field: 'claims', value: [{ id: 'new-claim' }], ownerEpoch: epoch })).toBe(true)
     expect((await readVaDeviceCache()).claims.map(row => row.id)).toEqual(['new-claim'])
   })
+
+  it('caches the letter index for its verified VA account without refreshing other datasets', async () => {
+    const lastSyncedAt = '2026-11-01T12:00:00Z'
+    stored[VA_DEVICE_CACHE_STORAGE_KEY] = { lastSyncedAt }
+    const value = [{ documentUuid: 'decision', document_type: '184' }]
+    expect(await applyVaCacheMutation({ field: 'letters', value, ownerEpoch: 'epoch-a' })).toBe(true)
+    expect(await readVaDeviceCache()).toMatchObject({ lastSyncedAt, letters: { rows: value } })
+    await establishVaCacheOwner('account-b')
+    expect(await applyVaCacheMutation({ field: 'letters', value, ownerEpoch: 'epoch-a' })).toBe(false)
+    expect((await readVaDeviceCache()).letters).toBeNull()
+  })
 })

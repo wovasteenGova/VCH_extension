@@ -4,7 +4,7 @@ export type VaFetchRequest = {
 }
 
 export type VaFetchResponse =
-  | { ok: true, status: number, data: unknown }
+  | { ok: true, status: number, data: unknown, ownerEpoch?: string }
   | { ok: false, status: number, error: string }
 
 export type ExtensionMessage = VaFetchRequest | { type: 'PING' }

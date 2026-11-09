@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { formatLastSynced } from '@/shared/vaDeviceCache'
+import { formatLastSynced, FRESH_DEVICE_SYNC_MS, isRecentVaDeviceSync } from '@/shared/vaDeviceCache'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   lastSyncedAt?: string | null
   liveSession?: boolean
 }>(), {
@@ -11,6 +11,15 @@ withDefaults(defineProps<{
 defineEmits<{
   signIn: []
 }>()
+
+const fresh = ref(false)
+watch(() => props.lastSyncedAt, (value, _, onCleanup) => {
+  fresh.value = isRecentVaDeviceSync(value)
+  if (!fresh.value || !value) return
+  const expiresIn = Date.parse(value) + FRESH_DEVICE_SYNC_MS - Date.now()
+  const timer = setTimeout(() => { fresh.value = false }, expiresIn + 1)
+  onCleanup(() => clearTimeout(timer))
+}, { immediate: true })
 </script>
 
 <template>
@@ -25,7 +34,7 @@ defineEmits<{
       : 'Showing data saved on this device.'"
   />
   <UAlert
-    v-else
+    v-else-if="!fresh"
     color="warning"
     variant="soft"
     icon="i-lucide-cloud-off"

@@ -63,6 +63,7 @@ export default defineBackground(() => {
     }
     if (message?.type === VA_CACHE_WRITE) {
       if (!ownPage && !vaPage) return
+      if (message.mutation?.field === 'letters' && !ownPage) return
       void applyVaCacheMutation(message.mutation ?? {}).then(ok => sendResponse({ ok }))
       return true
     }

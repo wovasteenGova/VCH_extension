@@ -5,6 +5,7 @@ import {
   SYMPTOM_TRACKER_URL,
   type HubQuickLink
 } from './urls'
+import { VA_CLAIM_LETTERS_PAGE, VA_TRACK_CLAIMS_PAGE } from './vaEndpoints'
 
 export type PopupFooterLink = {
   id: string
@@ -48,8 +49,8 @@ export const VA_QUICK_LINKS: PopupFooterLink[] = [
   {
     id: 'decision-letters',
     label: 'Download decision letters',
-    description: 'Rating decisions and benefit letters on VA.gov',
-    url: 'https://www.va.gov/records/download-va-letters/',
+    description: 'Claim and appeal decision letters on VA.gov',
+    url: VA_CLAIM_LETTERS_PAGE,
     icon: 'i-lucide-file-text'
   },
   {
@@ -64,7 +65,7 @@ export const VA_QUICK_LINKS: PopupFooterLink[] = [
     id: 'track-claims',
     label: 'Track claims on VA.gov',
     description: 'Open Track Claims: sign in required',
-    url: 'https://www.va.gov/track-claims/your-claims/',
+    url: VA_TRACK_CLAIMS_PAGE,
     icon: 'i-lucide-clipboard-list'
   }
 ]
