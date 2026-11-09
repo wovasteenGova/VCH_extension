@@ -14,6 +14,7 @@ const profileTabs = [
   { label: 'Ratings', value: 'ratings', slot: 'ratings', icon: 'i-lucide-percent' },
   { label: 'Letters', value: 'letters', slot: 'letters', icon: 'i-lucide-file-text' }
 ]
+const activeProfileTab = ref('ratings')
 const ratings = ref<InstanceType<typeof VaRatingsTab> | null>(null)
 const letters = ref<InstanceType<typeof VaDecisionLettersTab> | null>(null)
 const approved = ref(false)
@@ -106,12 +107,12 @@ async function save() {
       <UButton size="xs" variant="ghost" icon="i-lucide-settings-2" :disabled="saving" @click="$emit('privacy')">Data controls</UButton>
     </div>
     <fieldset :disabled="saving" class="min-w-0">
-      <UTabs :items="profileTabs" default-value="ratings" :unmount-on-hide="false" size="sm">
+      <UTabs v-model="activeProfileTab" :items="profileTabs" :unmount-on-hide="false" size="sm">
         <template #ratings>
           <VaRatingsTab ref="ratings" />
         </template>
         <template #letters>
-          <VaDecisionLettersTab ref="letters" />
+          <VaDecisionLettersTab ref="letters" :active="activeProfileTab === 'letters'" />
         </template>
       </UTabs>
     </fieldset>

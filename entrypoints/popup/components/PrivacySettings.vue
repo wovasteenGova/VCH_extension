@@ -42,7 +42,7 @@ async function clear() {
       <h2 id="privacy-heading" class="text-base font-semibold text-highlighted">Your VA data and privacy</h2>
       <UButton v-if="accepted" aria-label="Close privacy settings" icon="i-lucide-x" variant="ghost" color="error" @click="emit('close')" />
     </div>
-    <p>With your permission, VCH reads claims, appeals, disability ratings, and profile details from your existing VA.gov session. Profile details can include your name, birth date, phone, service history, and the last four digits of your SSN.</p>
+    <p>With your permission, VCH reads claims, appeals, disability ratings, and profile details from your existing VA.gov session. Opening Letters checks which decision letters are available. Profile details can include your name, birth date, phone, service history, and the last four digits of your SSN.</p>
     <p>These details are saved in this browser so you can view them later. They are sensitive and are not encrypted by the extension. Use a private browser profile on a device you trust.</p>
     <p>Your VA password and VA session cookies are never sent to VCH. Optional imports read your VCH sign-in cookie to authenticate requests to your account. Selected data or PDFs leave your device only when you approve a VCH import.</p>
     <template v-if="!accepted">

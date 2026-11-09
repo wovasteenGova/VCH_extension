@@ -3,6 +3,7 @@ import { listVaDecisionLetters, type VaLetterIndexRow } from '@/shared/vaClaimLe
 import type { LetterImportOutcome } from '@/shared/vaProfileImport'
 import { openVaClaimsPage } from '@/shared/vaSignInNavigation'
 
+const props = defineProps<{ active: boolean }>()
 const letters = ref<VaLetterIndexRow[]>([])
 const selected = ref<string[]>([])
 const loading = ref(false)
@@ -14,20 +15,29 @@ const key = (row: VaLetterIndexRow) => `${row.documentUuid}:${row.document_type}
 const selectedLetters = computed(() => letters.value.filter(row => selected.value.includes(key(row))))
 const selectAllState = computed(() => selected.value.length === 0 ? false : selected.value.length === letters.value.length ? true : 'indeterminate' as const)
 
-async function load() {
+async function load(automatic = false) {
   if (loading.value) return
   loading.value = true
   error.value = ''
   try {
-    letters.value = await listVaDecisionLetters()
-    selected.value = []
+    const next = await listVaDecisionLetters()
+    const previousKeys = new Set(letters.value.map(key))
+    const nextKeys = new Set(next.map(key))
+    letters.value = next
+    selected.value = selected.value.filter(value => nextKeys.has(value))
     loaded.value = true
-    toast.add({ title: `${letters.value.length} decision letter${letters.value.length === 1 ? '' : 's'} available`, description: 'Choose individual letters or Select all, then review the shared Save VA data approval below.', color: 'success' })
+    if (next.length && (!automatic || next.some(row => !previousKeys.has(key(row))))) {
+      toast.add({ title: `${next.length} decision letter${next.length === 1 ? '' : 's'} available`, description: 'Select the letters you want to save to your VCH account.', color: 'success' })
+    }
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : 'Could not read VA decision letters.'
-    toast.add({ title: 'Could not find decision letters', description: error.value, color: 'error' })
+    if (!automatic) toast.add({ title: 'Could not find decision letters', description: error.value, color: 'error' })
   } finally { loading.value = false }
 }
+
+watch(() => props.active, (active) => {
+  if (active) void load(true)
+}, { immediate: true })
 
 function toggle(row: VaLetterIndexRow, checked: boolean | 'indeterminate') {
   selected.value = checked === true ? [...new Set([...selected.value, key(row)])] : selected.value.filter(value => value !== key(row))
@@ -50,7 +60,7 @@ defineExpose({ selectedLetters, recordOutcome })
     <h2 id="letters-heading" class="font-semibold text-highlighted">Decision letters</h2>
     <p class="text-sm text-muted">Choose the PDFs to save from your signed-in VA.gov account. Ratings and selected letters share the approval below.</p>
     <div class="flex flex-wrap gap-2">
-      <UButton :loading="loading" icon="i-lucide-refresh-cw" @click="load">{{ loaded ? 'Refresh letters' : 'Find decision letters' }}</UButton>
+      <UButton :loading="loading" icon="i-lucide-refresh-cw" @click="load()">{{ loaded ? 'Refresh letters' : 'Find decision letters' }}</UButton>
       <UButton variant="outline" @click="openVaClaimsPage">Open VA.gov</UButton>
     </div>
     <p v-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
