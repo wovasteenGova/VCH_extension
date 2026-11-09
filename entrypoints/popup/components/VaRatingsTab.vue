@@ -18,6 +18,23 @@ import {
 import { useRatingsPasskeyLock } from '../composables/useRatingsPasskeyLock'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
 
+// VA's 2026 base rates (effective December 1, 2025) for a veteran without dependents.
+// https://www.va.gov/disability/compensation-rates/veteran-rates/
+const baseMonthlyRate2026: Readonly<Record<number, number | undefined>> = {
+  0: 0,
+  10: 180.42,
+  20: 356.66,
+  30: 552.47,
+  40: 795.84,
+  50: 1132.90,
+  60: 1435.02,
+  70: 1808.45,
+  80: 2102.15,
+  90: 2362.30,
+  100: 3938.58
+}
+const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+
 const {
   unlocked,
   hasCredential,
@@ -68,6 +85,10 @@ const emptyUnlockedMessage = computed(() => {
 })
 
 const hasRatingsData = computed(() => combinedRating.value != null || rows.value.length > 0)
+const monthlyEstimate = computed(() => {
+  const rate = combinedRating.value == null ? undefined : baseMonthlyRate2026[combinedRating.value]
+  return rate === undefined ? null : usd.format(rate)
+})
 
 const importPreviewItems = computed(() => buildVaImportPreviewItems({
   combinedRating: combinedRating.value,
@@ -477,17 +498,31 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
       <div v-else-if="hasRatingsData || isStale" class="space-y-3">
         <div
           v-if="combinedRating != null"
-          class="rounded-lg border border-primary/30 bg-primary/10 p-3 text-center"
+          class="overflow-hidden rounded-xl border border-primary/25 bg-gradient-to-br from-primary/10 to-default"
         >
-          <p class="text-muted text-xs">
-            Combined rating
-          </p>
-          <p class="font-semibold text-2xl text-highlighted">
-            {{ combinedRating }}%
-          </p>
-          <p v-if="combinedEffectiveDate" class="mt-1 text-muted text-xs">
-            Effective {{ formatVaDate(combinedEffectiveDate) }}
-          </p>
+          <div class="grid p-3" :class="monthlyEstimate ? 'grid-cols-2' : 'grid-cols-1'">
+            <div class="min-w-0 pr-2">
+              <p class="text-xs font-medium text-muted">Combined rating</p>
+              <p class="mt-1 text-2xl font-semibold leading-tight tabular-nums text-highlighted">{{ combinedRating }}%</p>
+              <p v-if="combinedEffectiveDate" class="mt-1 text-xs text-muted">
+                Effective {{ formatVaDate(combinedEffectiveDate) }}
+              </p>
+            </div>
+            <div v-if="monthlyEstimate" class="min-w-0 border-s border-default ps-3">
+              <p class="text-xs font-medium text-muted">Monthly estimate</p>
+              <p class="mt-1 text-2xl font-semibold leading-tight tabular-nums text-highlighted">{{ monthlyEstimate }}</p>
+              <p class="mt-1 text-xs text-muted">2026 base rate · no dependents</p>
+            </div>
+          </div>
+          <a
+            href="https://www.va.gov/va-payment-history/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center justify-between gap-2 border-t border-default px-3 py-2 text-xs font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+          >
+            View VA payment history
+            <UIcon name="i-lucide-arrow-up-right" class="size-3.5 shrink-0" />
+          </a>
         </div>
 
         <div v-if="rows.length === 0 && combinedRating == null && isStale" class="space-y-3 rounded-lg border border-dashed border-default p-4 text-center">

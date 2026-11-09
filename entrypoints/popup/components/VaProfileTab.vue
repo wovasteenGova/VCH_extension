@@ -238,7 +238,17 @@ async function save(trackOnly = false) {
       <p v-if="feedback" role="status" class="text-sm" :class="feedbackColor === 'success' ? 'text-success' : feedbackColor === 'warning' ? 'text-warning' : 'text-error'">{{ feedback }}</p>
     </section>
     <fieldset :disabled="saving" class="min-w-0">
-      <UTabs v-model="activeProfileTab" :items="profileTabs" :unmount-on-hide="false" size="sm">
+      <UTabs
+        v-model="activeProfileTab"
+        :items="profileTabs"
+        :unmount-on-hide="false"
+        size="sm"
+        :ui="{
+          list: 'gap-2 bg-transparent p-0',
+          indicator: 'hidden',
+          trigger: 'rounded-none border-x border-default data-[state=active]:border-primary data-[state=active]:text-primary'
+        }"
+      >
         <template #ratings>
           <VaRatingsTab ref="ratings" />
         </template>

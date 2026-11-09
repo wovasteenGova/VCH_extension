@@ -83,5 +83,6 @@ export function formatVaDate(value: unknown) {
   if (typeof value !== 'string' || !value) return 'N/A'
   const parsed = Date.parse(value)
   if (!Number.isFinite(parsed)) return value
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(parsed)
+  const timeZone = /^\d{4}-\d{2}-\d{2}$/.test(value) ? 'UTC' : undefined
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeZone }).format(parsed)
 }
