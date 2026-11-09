@@ -6,6 +6,10 @@ import { openHubSignIn } from '@/shared/connectionStatus'
 import { describeVaProfileImport, saveVaProfileToVch } from '@/shared/vaProfileImport'
 
 defineEmits<{ privacy: [] }>()
+const profileTabs = [
+  { label: 'Ratings', value: 'ratings', slot: 'ratings', icon: 'i-lucide-percent' },
+  { label: 'Letters', value: 'letters', slot: 'letters', icon: 'i-lucide-file-text' }
+]
 const ratings = ref<InstanceType<typeof VaRatingsTab> | null>(null)
 const letters = ref<InstanceType<typeof VaDecisionLettersTab> | null>(null)
 const approved = ref(false)
@@ -72,9 +76,15 @@ async function save() {
       <h2 id="va-profile-heading" class="text-base font-semibold text-highlighted">VA Profile</h2>
       <UButton size="xs" variant="ghost" icon="i-lucide-settings-2" :disabled="saving" @click="$emit('privacy')">Data controls</UButton>
     </div>
-    <fieldset :disabled="saving" class="min-w-0 space-y-4">
-      <VaRatingsTab ref="ratings" />
-      <div class="border-t border-default pt-3"><VaDecisionLettersTab ref="letters" /></div>
+    <fieldset :disabled="saving" class="min-w-0">
+      <UTabs :items="profileTabs" default-value="ratings" :unmount-on-hide="false" size="sm">
+        <template #ratings>
+          <VaRatingsTab ref="ratings" />
+        </template>
+        <template #letters>
+          <VaDecisionLettersTab ref="letters" />
+        </template>
+      </UTabs>
     </fieldset>
     <section class="space-y-3 rounded-lg border border-default bg-elevated/30 p-3" aria-labelledby="save-va-data-heading">
       <h3 id="save-va-data-heading" class="text-base font-semibold text-highlighted">Save VA data to your VCH account</h3>
@@ -83,7 +93,7 @@ async function save() {
         <UButton size="xs" variant="ghost" icon="i-lucide-refresh-cw" aria-label="Refresh VCH account" :disabled="saving" @click="refreshAccount" />
       </div>
       <p class="text-sm text-muted">Save your unlocked ratings and profile details to VCH and send your selected decision PDFs to your private document library for storage and analysis.</p>
-      <p class="text-sm">{{ ratingsReady ? 'Ratings and profile included.' : 'Unlock ratings above to include them.' }} {{ selectedLetters.length }} decision letter{{ selectedLetters.length === 1 ? '' : 's' }} selected.</p>
+      <p class="text-sm">{{ ratingsReady ? 'Ratings and profile included.' : 'Unlock ratings in the Ratings tab to include them.' }} {{ selectedLetters.length }} decision letter{{ selectedLetters.length === 1 ? '' : 's' }} selected.</p>
       <div v-if="previewItems.length" class="rounded-md border border-default p-2.5">
         <button type="button" class="flex w-full items-center justify-between text-left text-sm font-medium" :aria-expanded="previewOpen" @click="previewOpen = !previewOpen">
           Will send to your VCH account ({{ previewItems.length }} profile items)
@@ -97,7 +107,7 @@ async function save() {
       <UButton block icon="i-lucide-cloud-upload" :loading="saving" :disabled="!approved || !canSave || saving" @click="save">Save to my VCH account</UButton>
       <UButton v-if="!accountId" block variant="outline" @click="openHubSignIn">Sign in to Hub</UButton>
       <p v-if="feedback" role="status" class="text-sm" :class="feedbackColor === 'success' ? 'text-success' : feedbackColor === 'warning' ? 'text-warning' : 'text-error'">{{ feedback }}</p>
-      <p class="text-xs text-muted">Select all or choose individual letters above. Nothing is sent until you approve and click Save. Keep this window open until saving finishes.</p>
+      <p class="text-xs text-muted">Select all or choose individual letters in the Letters tab. Nothing is sent until you approve and click Save. Keep this window open until saving finishes.</p>
     </section>
   </section>
 </template>
