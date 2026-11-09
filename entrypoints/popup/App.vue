@@ -53,7 +53,15 @@ const tabs = [
 </script>
 
 <template>
-  <UApp class="popup-app" :toaster="{ position: 'top-center', max: 1, duration: 5000 }">
+  <UApp
+    class="popup-app"
+    :toaster="{
+      position: 'top-center',
+      max: 1,
+      duration: 5000,
+      ui: { base: 'mx-auto w-max max-w-full wrap-anywhere [&>[data-slot=wrapper]]:w-auto' }
+    }"
+  >
     <div class="popup-shell grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 px-3 pt-3 pb-0">
       <div class="popup-chrome relative z-30 mb-1.5 min-h-0 space-y-2 overflow-visible pb-0.5">
         <header class="flex flex-col gap-1.5">
