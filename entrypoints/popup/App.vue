@@ -19,7 +19,9 @@ const activeTab = ref('profile')
 const privacyReady = ref(false)
 const localConsent = ref(false)
 const privacyOpen = ref(false)
-const savingVaData = ref(false)
+const savingProfile = ref(false)
+const tracking = ref(false)
+const savingVaData = computed(() => savingProfile.value || tracking.value)
 const trackAfterSave = ref(false)
 const toast = useToast()
 
@@ -34,7 +36,7 @@ async function openTracker() {
 
 async function trackOnVch() {
   if (savingVaData.value) return
-  savingVaData.value = true
+  tracking.value = true
   try {
     const track = await readVaTrackBridgeCachePayload()
     if (track.claims.length || track.appeals.length) {
@@ -51,7 +53,7 @@ async function trackOnVch() {
   } catch (error) {
     toast.add({ title: 'Could not open Claim Tracker', description: error instanceof Error ? error.message : 'Try again in a moment.', color: 'error' })
   } finally {
-    savingVaData.value = false
+    tracking.value = false
   }
 }
 
@@ -84,11 +86,11 @@ function onFooterBackdropWheel(e: WheelEvent) {
   scrollEl.scrollTop += e.deltaY
 }
 
-const tabs = computed(() => [
+const tabs = [
   { label: 'VA Profile', value: 'profile', icon: 'i-lucide-user-round' },
   { label: 'Claims', value: 'claims', icon: 'i-lucide-clipboard-list' },
   { label: 'Hub', value: 'hub', icon: 'i-lucide-house' }
-].map(tab => ({ ...tab, disabled: savingVaData.value })))
+]
 </script>
 
 <template>
@@ -148,14 +150,15 @@ const tabs = computed(() => [
         />
         <div class="popup-tab-scroll custom-scrollbar relative z-0 h-full min-h-0 overflow-y-auto overscroll-contain">
           <p v-if="!privacyReady" role="status" class="py-4 text-sm text-muted">Loading your privacy preferences…</p>
-          <PrivacySettings v-else-if="!localConsent || privacyOpen" :accepted="localConsent" @accepted="acceptedPrivacy" @cleared="clearedPrivacy" @close="privacyOpen = false" />
+          <PrivacySettings v-else-if="!localConsent || privacyOpen" :accepted="localConsent" :clear-disabled="savingVaData" @accepted="acceptedPrivacy" @cleared="clearedPrivacy" @close="privacyOpen = false" />
           <VaProfileTab
             v-if="privacyReady && localConsent"
             v-show="activeTab === 'profile' && !privacyOpen"
             :active="activeTab === 'profile' && !privacyOpen"
+            :tracking="tracking"
             :track-after-save="trackAfterSave"
             @privacy="privacyOpen = true"
-            @saving="savingVaData = $event"
+            @saving="savingProfile = $event"
             @track="openTracker"
           />
           <VaClaimTrackerTab v-if="localConsent && !privacyOpen && activeTab === 'claims'" :tracking="savingVaData" @track="trackOnVch" />

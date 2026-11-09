@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { acceptLocalDataAccess, clearVaDataAndConsent } from '@/shared/privacyConsent'
 
-defineProps<{ accepted: boolean }>()
+const props = defineProps<{ accepted: boolean, clearDisabled?: boolean }>()
 const emit = defineEmits<{ accepted: [], cleared: [], close: [] }>()
 const localApproval = ref(false)
 const busy = ref(false)
@@ -17,6 +17,7 @@ async function enableLocal() {
 }
 
 async function clear() {
+  if (busy.value || props.clearDisabled) return
   busy.value = true
   try { await clearVaDataAndConsent(); toast.add({ title: 'Local VA data cleared', description: 'Local access and cloud permissions were revoked.', color: 'success' }); emit('cleared') }
   catch { error.value = 'Could not clear all data. Try again.'; toast.add({ title: 'Could not clear VA data', description: error.value, color: 'error' }) }
@@ -39,7 +40,7 @@ async function clear() {
     </template>
     <template v-else>
       <p>Manage your VCH account’s sync approval and auto-sync in VA Profile under Sync Approved.</p>
-      <UButton color="error" variant="outline" :loading="busy" @click="clear">Clear local VA data and revoke access</UButton>
+      <UButton color="error" variant="outline" :loading="busy" :disabled="clearDisabled" @click="clear">Clear local VA data and revoke access</UButton>
       <p class="text-xs text-muted">Clearing here removes cached VA data and permissions from this extension. Delete imported documents and cloud data separately in your VCH account. Theme and display preferences are preserved.</p>
     </template>
     <p v-if="error" role="alert" class="text-error">{{ error }}</p>
