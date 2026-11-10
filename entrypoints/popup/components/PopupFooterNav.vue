@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useResizeObserver } from '@vueuse/core'
+import { onClickOutside, useResizeObserver } from '@vueuse/core'
 import {
   footerLinkIconAccent,
   hubQuickLinksAsFooterLinks,
@@ -53,6 +53,8 @@ function togglePanel(panelId: FooterPanelId) {
 function closePanel() {
   expandedPanel.value = null
 }
+
+onClickOutside(navRef, closePanel)
 
 function updateListScrollableFlag() {
   const body = listBodyRef.value
