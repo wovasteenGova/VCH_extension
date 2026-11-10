@@ -277,8 +277,8 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
         :ui="{
           list: 'gap-2 bg-transparent p-0',
           indicator: 'hidden',
-          trigger: 'group/profile-tab rounded-none border-x border-default data-[state=active]:rounded-[20%] data-[state=active]:border-primary data-[state=active]:text-primary',
-          label: 'rounded-[50%] px-2 py-0.5 group-data-[state=active]/profile-tab:bg-primary/15'
+          trigger: 'group/profile-tab rounded-none border-x border-y-0 border-default data-[state=active]:rounded-[20%] data-[state=active]:border-primary data-[state=active]:text-primary',
+          label: 'rounded-[5%] px-2 py-0.5 group-data-[state=active]/profile-tab:bg-primary/15'
         }"
       >
         <template #ratings>
