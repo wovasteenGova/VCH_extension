@@ -141,13 +141,15 @@ const tabs = [
 
       <!-- min-h-0 + overflow-hidden so 1fr row stays bounded and inner overflow-y scrolls -->
       <div class="relative z-0 h-full min-h-0 overflow-hidden">
-        <div
-          v-if="footerLinkPanelOpen"
-          class="popup-footer-link-backdrop absolute inset-0 z-10 bg-black/50"
-          aria-hidden="true"
-          @click="closeFooterLinkPanel"
-          @wheel.passive="onFooterBackdropWheel"
-        />
+        <Transition name="footer-backdrop">
+          <div
+            v-if="footerLinkPanelOpen"
+            class="popup-footer-link-backdrop absolute inset-0 z-10 bg-black/50"
+            aria-hidden="true"
+            @click="closeFooterLinkPanel"
+            @wheel.passive="onFooterBackdropWheel"
+          />
+        </Transition>
         <div class="popup-tab-scroll custom-scrollbar relative z-0 h-full min-h-0 overflow-y-auto overscroll-contain">
           <p v-if="!privacyReady" role="status" class="py-4 text-sm text-muted">Loading your privacy preferences…</p>
           <PrivacySettings v-else-if="!localConsent || privacyOpen" :accepted="localConsent" :clear-disabled="savingVaData" @accepted="acceptedPrivacy" @cleared="clearedPrivacy" @close="privacyOpen = false" />

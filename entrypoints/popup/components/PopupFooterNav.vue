@@ -139,65 +139,67 @@ function openLink(url: string) {
 
 <template>
   <div ref="navRef" class="popup-footer-nav relative z-30 flex w-full flex-col">
-    <div
-      v-if="activePanel"
-      ref="listRef"
-      class="popup-footer-link-panel absolute bottom-full left-0 right-0 z-30 mb-1.5 flex w-full flex-col gap-2 overflow-hidden rounded-lg border border-default bg-default p-2 shadow-lg"
-      role="dialog"
-      :aria-label="activePanel.title"
-      :style="listMaxHeight != null ? { maxHeight: `${listMaxHeight}px` } : undefined"
-      @click.stop
-    >
-      <div class="flex shrink-0 items-start justify-between gap-2 border-b border-default/60 pb-2">
-        <p class="min-w-0 flex-1 pt-0.5 text-sm font-semibold leading-snug text-highlighted">
-          {{ activePanel.title }}
-        </p>
-        <UButton
-          type="button"
-          size="sm"
-          color="error"
-          variant="soft"
-          class="shrink-0 ring-1 ring-inset ring-red-500/35"
-          icon="i-lucide-x"
-          aria-label="Close"
-          @click="closePanel"
-        />
-      </div>
+    <Transition name="footer-panel">
       <div
-        ref="listBodyRef"
-        class="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain"
-        :class="listScrollable ? 'custom-scrollbar' : 'no-scrollbar'"
+        v-if="activePanel"
+        ref="listRef"
+        class="popup-footer-link-panel absolute bottom-full left-0 right-0 z-30 mb-1.5 flex w-full flex-col gap-2 overflow-hidden rounded-lg border border-default bg-default p-2 shadow-lg"
+        role="dialog"
+        :aria-label="activePanel.title"
+        :style="listMaxHeight != null ? { maxHeight: `${listMaxHeight}px` } : undefined"
+        @click.stop
       >
-        <button
-          v-for="(link, index) in activePanel.links"
-          :key="link.id"
-          type="button"
-          class="flex w-full min-h-[3.25rem] items-start gap-3 rounded-lg border border-default bg-elevated/40 px-3 py-3 text-left text-base transition hover:bg-elevated"
-          @click="openLink(link.url)"
+        <div class="flex shrink-0 items-start justify-between gap-2 border-b border-default/60 pb-2">
+          <p class="min-w-0 flex-1 pt-0.5 text-sm font-semibold leading-snug text-highlighted">
+            {{ activePanel.title }}
+          </p>
+          <UButton
+            type="button"
+            size="sm"
+            color="error"
+            variant="soft"
+            class="shrink-0 ring-1 ring-inset ring-red-500/35"
+            icon="i-lucide-x"
+            aria-label="Close"
+            @click="closePanel"
+          />
+        </div>
+        <div
+          ref="listBodyRef"
+          class="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain"
+          :class="listScrollable ? 'custom-scrollbar' : 'no-scrollbar'"
         >
-          <span
-            class="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-md border"
-            :class="[footerLinkIconAccent(index).border, footerLinkIconAccent(index).bg]"
+          <button
+            v-for="(link, index) in activePanel.links"
+            :key="link.id"
+            type="button"
+            class="flex w-full min-h-[3.25rem] items-start gap-3 rounded-lg border border-default bg-elevated/40 px-3 py-3 text-left text-base transition hover:bg-elevated"
+            @click="openLink(link.url)"
           >
-            <UIcon
-              :name="link.icon"
-              class="size-5"
-              :class="footerLinkIconAccent(index).icon"
-            />
-          </span>
-          <span class="min-w-0 flex-1">
-            <span class="block font-semibold text-base leading-snug text-highlighted">{{ link.label }}</span>
-            <span class="block text-sm leading-snug text-muted">{{ link.description }}</span>
             <span
-              v-if="link.warning"
-              class="mt-1 block text-xs leading-snug text-amber-400"
+              class="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-md border"
+              :class="[footerLinkIconAccent(index).border, footerLinkIconAccent(index).bg]"
             >
-              {{ link.warning }}
+              <UIcon
+                :name="link.icon"
+                class="size-5"
+                :class="footerLinkIconAccent(index).icon"
+              />
             </span>
-          </span>
-        </button>
+            <span class="min-w-0 flex-1">
+              <span class="block font-semibold text-base leading-snug text-highlighted">{{ link.label }}</span>
+              <span class="block text-sm leading-snug text-muted">{{ link.description }}</span>
+              <span
+                v-if="link.warning"
+                class="mt-1 block text-xs leading-snug text-amber-400"
+              >
+                {{ link.warning }}
+              </span>
+            </span>
+          </button>
+        </div>
       </div>
-    </div>
+    </Transition>
 
     <div class="popup-footer-nav-labels grid w-full shrink-0 grid-cols-3 gap-1.5">
       <button

@@ -92,6 +92,31 @@ html.popup-expanded .popup-shell {
   overflow: visible;
 }
 
+.footer-panel-enter-active,
+.footer-panel-leave-active {
+  transition: transform 240ms ease-in-out, opacity 240ms ease-in-out;
+}
+
+.footer-panel-enter-from,
+.footer-panel-leave-to {
+  transform: translateY(20px);
+  opacity: 0;
+}
+
+.footer-panel-leave-active {
+  pointer-events: none;
+}
+
+.footer-backdrop-enter-active,
+.footer-backdrop-leave-active {
+  transition: opacity 240ms ease-in-out;
+}
+
+.footer-backdrop-enter-from,
+.footer-backdrop-leave-to {
+  opacity: 0;
+}
+
 /* Interactive cursors — Tailwind preflight sets buttons to default. */
 @layer base {
   a[href],
@@ -264,6 +289,10 @@ html.popup-expanded .popup-shell {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .footer-panel-enter-active,
+  .footer-panel-leave-active,
+  .footer-backdrop-enter-active,
+  .footer-backdrop-leave-active,
   .vcb-scrollbar-auto::-webkit-scrollbar-thumb,
   .custom-scrollbar:not(.no-scrollbar)::-webkit-scrollbar-thumb {
     transition: none;
