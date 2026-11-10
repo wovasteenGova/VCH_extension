@@ -50,4 +50,15 @@ describe('VA decision letter refresh handoff', () => {
     await expect(requestVaDecisionLetterRefresh()).resolves.toEqual(failure)
     expect(fetchVaDecisionLetterIndex).not.toHaveBeenCalled()
   })
+
+  it('refetches when the account changes during the save without returning the old list', async () => {
+    sendMessage.mockResolvedValue(undefined)
+    const replacement = { rows: [{ documentUuid: 'current-letter', document_type: '184' }], ownerEpoch: 'current-epoch' }
+    vi.mocked(fetchVaDecisionLetterIndex).mockResolvedValueOnce({ rows, ownerEpoch }).mockResolvedValueOnce(replacement)
+    vi.mocked(checkVaCacheEpoch).mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    vi.mocked(saveVaLettersCache).mockResolvedValueOnce(false)
+
+    await expect(requestVaDecisionLetterRefresh()).resolves.toEqual({ ok: true, ...replacement, saved: true })
+    expect(saveVaLettersCache).toHaveBeenLastCalledWith(replacement.rows, replacement.ownerEpoch)
+  })
 })

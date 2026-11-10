@@ -70,7 +70,7 @@ export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | n
   const tabsApi = extensionTabsApi()
   if (!tabsApi) return null
 
-  const preferTrackClaims = url.includes('benefits_claims') || url.includes('/v0/appeals')
+  const preferTrackClaims = /\/v0\/(benefits_claims|appeals|claim_letters)\b/.test(url)
   const tabId = await findVaGovTabId(preferTrackClaims)
   if (tabId == null) return null
 

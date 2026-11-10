@@ -7,14 +7,17 @@ export async function refreshVaDecisionLetterCache(
   save = saveVaLettersCache
 ): Promise<VaDecisionLetterRefreshResult> {
   try {
-    const { rows, ownerEpoch } = await fetchVaDecisionLetterIndex(fetchPage)
-    if (!ownerEpoch) return { ok: false, error: 'Sign in to VA.gov to save your decision letter list.' }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { rows, ownerEpoch } = await fetchVaDecisionLetterIndex(fetchPage)
+      if (!ownerEpoch) return { ok: false, error: 'Sign in to VA.gov to save your decision letter list.' }
+      if (!await hasLocalDataConsent()) return { ok: false, error: 'Enable VA data access in Data controls to refresh letters.' }
+      if (!await checkVaCacheEpoch(ownerEpoch)) continue
 
-    const saved = await save(rows, ownerEpoch)
-    if (!await hasLocalDataConsent() || !await checkVaCacheEpoch(ownerEpoch)) {
-      return { ok: false, error: 'Your VA.gov access changed. Refresh the letter list and try again.' }
+      const saved = await save(rows, ownerEpoch)
+      if (!await hasLocalDataConsent()) return { ok: false, error: 'Enable VA data access in Data controls to refresh letters.' }
+      if (await checkVaCacheEpoch(ownerEpoch)) return { ok: true, rows, ownerEpoch, saved }
     }
-    return { ok: true, rows, ownerEpoch, saved }
+    return { ok: false, error: 'Open Go to VA Claim Letters, confirm you’re signed in, then refresh the list.' }
   } catch (error) {
     const message = error instanceof Error ? error.message.trim() : ''
     return { ok: false, error: message || 'Could not read decision letters from VA.gov. Try again from your signed-in VA.gov tab.' }
