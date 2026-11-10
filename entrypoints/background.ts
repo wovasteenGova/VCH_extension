@@ -11,25 +11,19 @@ import { probeVaSession } from '@/shared/connectionStatus'
 import { readVaTrackBridgeCachePayload } from '@/shared/vaTrackBridgeCache'
 import { autoSyncApprovedVaClaims } from '@/shared/vaProfileImport'
 import { hubUrl, VCH_EXTENSION_HUB_PATH } from '@/shared/urls'
-import { fetchVaDecisionLetterIndex, REFRESH_VA_DECISION_LETTERS, type VaDecisionLetterRefreshResult } from '@/shared/vaClaimLetters'
+import { REFRESH_VA_DECISION_LETTERS, type VaDecisionLetterRefreshResult } from '@/shared/vaClaimLetters'
+import { refreshVaDecisionLetterCache } from '@/shared/vaDecisionLetterSync'
 import { vaFetch } from '@/shared/vaClient'
 import { requestVa } from '@/shared/vaRequest'
 
 export default defineBackground(() => {
   let letterRefresh: Promise<VaDecisionLetterRefreshResult> | undefined
-  async function refreshDecisionLetters(): Promise<VaDecisionLetterRefreshResult> {
+  function refreshDecisionLetters() {
     const accountStore = { establishOwner: establishVaCacheOwner, checkEpoch: checkVaCacheEpoch }
-    try {
-      const { rows, ownerEpoch } = await fetchVaDecisionLetterIndex(url => vaFetch(url, address => requestVa(address, false, accountStore)))
-      if (!ownerEpoch) return { ok: false, error: 'Sign in to VA.gov to save your decision letter list.' }
-      const saved = await applyVaCacheMutation({ field: 'letters', value: rows, ownerEpoch })
-      if (!await hasLocalDataConsent() || !await checkVaCacheEpoch(ownerEpoch)) {
-        return { ok: false, error: 'Your VA.gov access changed. Refresh the letter list and try again.' }
-      }
-      return { ok: true, rows, ownerEpoch, saved }
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : 'Could not read VA decision letters.' }
-    }
+    return refreshVaDecisionLetterCache(
+      url => vaFetch(url, address => requestVa(address, false, accountStore)),
+      (rows, ownerEpoch) => applyVaCacheMutation({ field: 'letters', value: rows, ownerEpoch })
+    )
   }
 
   let syncTimer: ReturnType<typeof setTimeout> | undefined

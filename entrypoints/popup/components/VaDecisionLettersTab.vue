@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { decisionLetterKey as key, REFRESH_VA_DECISION_LETTERS, type VaDecisionLetterRefreshResult, type VaLetterIndexRow } from '@/shared/vaClaimLetters'
+import { decisionLetterKey as key, type VaLetterIndexRow } from '@/shared/vaClaimLetters'
+import { requestVaDecisionLetterRefresh } from '@/shared/vaDecisionLetterSync'
 import { cacheImportedDecisionLetterKeys, fetchImportedDecisionLetterKeys, readImportedDecisionLetterKeys } from '@/shared/decisionLetterImport'
 import type { LetterImportOutcome } from '@/shared/vaProfileImport'
 import { VA_CLAIM_LETTERS_PAGE } from '@/shared/vaEndpoints'
@@ -92,8 +93,8 @@ async function load(automatic = false) {
     }
     if (automatic && isRecentVaDeviceSync(fetchedAt.value)) return
     const previousKeys = new Set(letters.value.map(key))
-    const result: VaDecisionLetterRefreshResult | undefined = await browser.runtime.sendMessage({ type: REFRESH_VA_DECISION_LETTERS })
-    if (!result?.ok) throw new Error(result?.error || 'Could not refresh VA decision letters.')
+    const result = await requestVaDecisionLetterRefresh()
+    if (!result.ok) throw new Error(result.error)
     const { rows: next, ownerEpoch, saved } = result
     if (!await checkVaCacheEpoch(ownerEpoch)) {
       throw new Error('Your VA.gov account changed. Refresh the letter list and try again.')
