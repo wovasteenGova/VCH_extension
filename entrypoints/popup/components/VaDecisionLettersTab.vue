@@ -189,9 +189,9 @@ defineExpose({ selectedLetters, recordOutcome })
     <p class="text-sm text-muted">Letters already in your VCH library are checked off. Select any remaining letters to import.</p>
     <div class="flex flex-wrap gap-2">
       <UButton :loading="manualRefresh || (loading && !loaded)" :disabled="loading" icon="i-lucide-refresh-cw" @click="load()">{{ loaded ? 'Refresh letters' : 'Find decision letters' }}</UButton>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <UButton v-if="letters.length" color="success" icon="i-lucide-cloud-upload" :disabled="!selectedLetters.length || waitingForImportStatus || busy" @click="$emit('import')">Import to VCH</UButton>
-        <UButton variant="outline" :to="VA_CLAIM_LETTERS_PAGE" target="_blank" rel="noopener noreferrer">Open VA.gov</UButton>
+        <UButton variant="outline" :to="VA_CLAIM_LETTERS_PAGE" target="_blank" rel="noopener noreferrer">Go to VA Claim Letters</UButton>
       </div>
     </div>
     <p v-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
