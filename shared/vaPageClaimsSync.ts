@@ -25,20 +25,18 @@ export type VaPageClaimsSyncResult = {
 
 /** The VA.gov Sync button also warms the local ratings and letter list. */
 export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
-  void Promise.allSettled([
-    fetchVaJsonInPage(VA_ENDPOINTS.ratedDisabilities).then(result => {
-      if (!result.ok || !result.ownerEpoch) return
-      const ratings = parseVaRatingsResponse(result.data)
-      return saveVaRatingsCache({
-        combinedRating: ratings.combinedRating,
-        combinedEffectiveDate: ratings.combinedEffectiveDate,
-        rows: ratings.ratings
-      }, result.ownerEpoch)
-    }),
-    fetchVaDecisionLetterIndex().then(({ rows, ownerEpoch }) => {
-      if (ownerEpoch) return saveVaLettersCache(rows, ownerEpoch)
-    })
-  ])
+  void fetchVaJsonInPage(VA_ENDPOINTS.ratedDisabilities).then(result => {
+    if (!result.ok || !result.ownerEpoch) return
+    const ratings = parseVaRatingsResponse(result.data)
+    return saveVaRatingsCache({
+      combinedRating: ratings.combinedRating,
+      combinedEffectiveDate: ratings.combinedEffectiveDate,
+      rows: ratings.ratings
+    }, result.ownerEpoch)
+  }).catch(() => undefined)
+  const lettersSync = fetchVaDecisionLetterIndex().then(({ rows, ownerEpoch }) => {
+    if (ownerEpoch) return saveVaLettersCache(rows, ownerEpoch)
+  }).catch(() => undefined)
   const [claimsRes, appealsRes] = await Promise.all([
     fetchVaJsonInPage('https://api.va.gov/v0/benefits_claims'),
     fetchVaJsonInPage('https://api.va.gov/v0/appeals')
@@ -61,6 +59,8 @@ export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
 
   }
 
+  // Finish saving the letter list before the user leaves the VA.gov page.
+  await lettersSync
   if (savedClaims || savedAppeals) {
     await touchVaCacheSync()
     const cache = await readVaDeviceCache()

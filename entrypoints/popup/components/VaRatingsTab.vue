@@ -9,10 +9,12 @@ import { refreshVaProfileForImport } from '@/shared/vaUserProfileFetch'
 import { buildVaImportPreviewItems } from '@/shared/vaImportPreview'
 import { checkVaCacheEpoch, isRecentVaDeviceSync, readVaDeviceCache, saveVaRatingsCache, VA_CACHE_OWNER_KEY, VA_DEVICE_CACHE_STORAGE_KEY, type VaDeviceCache } from '@/shared/vaDeviceCache'
 import { assessRatingsAvailability, type RatingsAvailability } from '@/shared/ratingsAvailability'
+import { RATINGS_LOCK_CREDENTIAL_KEY } from '@/shared/ratingsPasskeyLock'
 import { useRatingsPasskeyLock } from '../composables/useRatingsPasskeyLock'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
 
 const props = defineProps<{ active: boolean }>()
+const PASSKEY_SETUP_DISMISSED_KEY = 'vch-va-ratings-passkey-setup-dismissed'
 
 // VA's 2026 base rates (effective December 1, 2025) for a veteran without dependents.
 // https://www.va.gov/disability/compensation-rates/veteran-rates/
@@ -38,6 +40,7 @@ const {
   busy: lockBusy,
   lockError,
   init,
+  syncCredential,
   lock,
   setupLock,
   unlock,
@@ -59,6 +62,9 @@ const importProfilePreview = ref<ParsedVaUserProfileForImport | null>(null)
 const gateChecking = ref(true)
 const profileRefreshing = ref(false)
 const manualRefresh = ref(false)
+const lockInitialized = ref(false)
+const setupDismissed = ref(false)
+const setupRequested = ref(false)
 const ratingsGate = ref<RatingsAvailability>({
   available: false,
   reason: 'va_sign_in',
@@ -66,6 +72,9 @@ const ratingsGate = ref<RatingsAvailability>({
 })
 
 const canUsePasskeyGate = computed(() => ratingsGate.value.available)
+const ratingsVisible = computed(() => lockInitialized.value && (
+  hasCredential.value ? unlocked.value : setupDismissed.value && !setupRequested.value
+))
 
 const gateMessage = computed(() => {
   if (ratingsGate.value.available) return ''
@@ -105,7 +114,7 @@ async function refreshImportProfilePreview() {
   profileRefreshing.value = true
   try {
     const profile = await refreshVaProfileForImport()
-    if (unlocked.value && generation === displayGeneration) importProfilePreview.value = profile
+    if (ratingsVisible.value && generation === displayGeneration) importProfilePreview.value = profile
   } catch {
     // The saved profile remains available when a background refresh fails.
   } finally {
@@ -147,7 +156,7 @@ function applyRatings(ratings: VaDeviceCache['ratings'], syncedAt: string | null
 }
 
 async function loadRatings() {
-  if (!unlocked.value || ratingsSyncing.value) return false
+  if (!ratingsVisible.value || ratingsSyncing.value) return false
   const generation = displayGeneration
   error.value = null
   ratingsSyncing.value = true
@@ -155,7 +164,7 @@ async function loadRatings() {
 
   try {
     const response = await fetchVaRatedDisabilities()
-    if (!unlocked.value || generation !== displayGeneration) return false
+    if (!ratingsVisible.value || generation !== displayGeneration) return false
     if (!response.ok) {
       vaConnected.value = false
       isStale.value = hasRatingsData.value
@@ -165,7 +174,7 @@ async function loadRatings() {
 
     const summary = parseVaRatingsResponse(response.data)
     if (response.ownerEpoch && !await checkVaCacheEpoch(response.ownerEpoch)) return false
-    if (!unlocked.value || generation !== displayGeneration) return false
+    if (!ratingsVisible.value || generation !== displayGeneration) return false
     vaConnected.value = true
     isStale.value = false
     const ratings = {
@@ -211,15 +220,35 @@ function lockRatings() {
   clearRatingsDisplay()
 }
 
-watch(unlocked, (isUnlocked) => {
-  if (!isUnlocked) clearRatingsDisplay()
+function openProtection() {
+  if (hasCredential.value) lock()
+  else setupRequested.value = true
+}
+
+async function dismissProtection() {
+  try {
+    await browser.storage.local.set({ [PASSKEY_SETUP_DISMISSED_KEY]: true })
+    setupDismissed.value = true
+    setupRequested.value = false
+  } catch {
+    toast.add({ title: 'Could not save your ratings preference', color: 'error' })
+  }
+}
+
+async function removeProtection() {
+  await removeLock()
+  if (!hasCredential.value) await dismissProtection()
+}
+
+watch(ratingsVisible, (visible) => {
+  if (!visible) clearRatingsDisplay()
 }, { flush: 'sync' })
 
-watch([unlocked, () => props.active], async ([isUnlocked, active]) => {
-  if (!isUnlocked || !active) return
+watch([ratingsVisible, canUsePasskeyGate, () => props.active], async ([visible, available, active]) => {
+  if (!visible || !available || !active) return
   const generation = displayGeneration
   const cache = await readVaDeviceCache()
-  if (!unlocked.value || generation !== displayGeneration) return
+  if (!ratingsVisible.value || generation !== displayGeneration) return
   if (cache.ratings && !hasRatingsData.value) applyRatings(cache.ratings, cache.lastSyncedAt)
   importProfilePreview.value ??= cache.profile
   const fresh = isRecentVaDeviceSync(cache.ratings?.fetchedAt)
@@ -230,6 +259,8 @@ watch([unlocked, () => props.active], async ([isUnlocked, active]) => {
 onMounted(async () => {
   const onStorage = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
     if (area !== 'local') return
+    const credential = changes[RATINGS_LOCK_CREDENTIAL_KEY]
+    if (credential) syncCredential(credential.newValue)
     const change = changes[VA_DEVICE_CACHE_STORAGE_KEY]
     if (changes[VA_CACHE_OWNER_KEY] || (change && !change.newValue)) {
       lockRatings()
@@ -240,7 +271,7 @@ onMounted(async () => {
     const previous = change?.oldValue as VaDeviceCache | undefined
     if (cache?.ratings && cache.ratings.fetchedAt !== previous?.ratings?.fetchedAt) {
       ratingsGate.value = { available: true, source: 'cache' }
-      if (unlocked.value) {
+      if (ratingsVisible.value) {
         applyRatings(cache.ratings, cache.lastSyncedAt)
         isStale.value = false
       }
@@ -248,11 +279,17 @@ onMounted(async () => {
   }
   browser.storage.onChanged.addListener(onStorage)
   onUnmounted(() => browser.storage.onChanged.removeListener(onStorage))
-  await Promise.all([init(), refreshRatingsGate()])
+  const [settings] = await Promise.all([
+    browser.storage.local.get(PASSKEY_SETUP_DISMISSED_KEY).catch(() => ({} as Record<string, unknown>)),
+    init(),
+    refreshRatingsGate()
+  ])
+  setupDismissed.value = settings[PASSKEY_SETUP_DISMISSED_KEY] === true
+  lockInitialized.value = true
 })
 
 onUnmounted(lockRatings)
-const ready = computed(() => unlocked.value && hasRatingsData.value)
+const ready = computed(() => ratingsVisible.value && hasRatingsData.value)
 defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPayload })
 </script>
 
@@ -264,16 +301,17 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
       </p>
       <div class="flex items-center gap-1">
         <UButton
-          v-if="unlocked"
+          v-if="ratingsVisible && canUsePasskeyGate"
           size="xs"
           color="neutral"
           variant="ghost"
           icon="i-lucide-lock"
-          aria-label="Lock ratings"
-          @click="lockRatings"
+          :aria-label="hasCredential ? 'Lock ratings' : 'Protect your ratings'"
+          :title="hasCredential ? 'Lock ratings' : 'Protect your ratings'"
+          @click="openProtection"
         />
         <UButton
-          v-if="unlocked"
+          v-if="ratingsVisible && canUsePasskeyGate"
           size="xs"
           color="neutral"
           variant="ghost"
@@ -287,23 +325,10 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
     </div>
 
     <div
-      v-if="gateChecking"
+      v-if="gateChecking || !lockInitialized"
       class="flex items-center justify-center py-10"
     >
       <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-primary" />
-    </div>
-
-    <div
-      v-else-if="!supported"
-      class="space-y-3 rounded-lg border border-dashed border-default p-4 text-center"
-    >
-      <UIcon name="i-lucide-fingerprint" class="mx-auto size-8 text-muted" />
-      <p class="font-medium text-sm text-highlighted">
-        Passkeys not available
-      </p>
-      <p class="text-muted text-xs leading-relaxed">
-        Disability ratings stay hidden here. Use a browser that supports device passkeys (Edge or Chrome with Windows Hello).
-      </p>
     </div>
 
     <div
@@ -354,19 +379,34 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
     </div>
 
     <div
-      v-else-if="!unlocked"
+      v-else-if="!ratingsVisible"
       class="space-y-3 rounded-lg border border-default bg-elevated/30 p-4"
     >
       <div class="flex items-start gap-3">
         <UIcon name="i-lucide-shield-check" class="mt-0.5 size-5 shrink-0 text-primary" />
-        <div class="min-w-0 space-y-1">
-          <p class="font-medium text-sm text-highlighted">
-            {{ hasCredential ? 'Ratings are protected' : 'Protect your ratings' }}
-          </p>
+        <div class="min-w-0 flex-1 space-y-1">
+          <div class="flex items-center justify-between gap-2">
+            <p class="font-medium text-sm text-highlighted">
+              {{ hasCredential ? 'Ratings are protected' : 'Protect your ratings' }}
+            </p>
+            <UButton
+              v-if="!hasCredential"
+              icon="i-lucide-x"
+              color="error"
+              variant="ghost"
+              size="xs"
+              aria-label="Dismiss passkey setup"
+              title="Continue without a passkey"
+              :disabled="lockBusy"
+              @click="dismissProtection"
+            />
+          </div>
           <p class="text-muted text-xs leading-relaxed">
-            {{ hasCredential
-              ? 'Open with Windows Hello, a device passkey, or your browser saved passkey.'
-              : 'Set up a passkey to hide ratings until you open them. Windows Hello, this device, or your browser saved passkey all work in Chrome and Edge.' }}
+            {{ !supported
+              ? 'Passkey protection is unavailable in this browser.'
+              : hasCredential
+                ? 'Open with Windows Hello, a device passkey, or your browser saved passkey.'
+                : 'Set up a passkey to protect your ratings on this device.' }}
           </p>
         </div>
       </div>
@@ -379,6 +419,7 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
       </p>
 
       <UButton
+        v-if="supported"
         block
         size="md"
         color="primary"
@@ -389,11 +430,11 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
       />
 
       <button
-        v-if="hasCredential"
+        v-if="hasCredential && supported"
         type="button"
         class="w-full text-center text-muted text-[0.65rem] underline-offset-2 hover:underline"
         :disabled="lockBusy"
-        @click="removeLock"
+        @click="removeProtection"
       >
         Remove passkey protection on this device
       </button>
@@ -522,12 +563,19 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
                 {{ row.rating != null ? `${row.rating}%` : 'N/A' }}
               </span>
             </div>
-            <p class="mt-1 text-muted text-xs">
+            <p v-if="row.decision || row.effectiveDate || row.diagnosticCode" class="mt-1 text-muted text-xs">
               <span v-if="row.decision">{{ row.decision }}</span>
               <span v-if="row.effectiveDate"> · Effective {{ formatVaDate(row.effectiveDate) }}</span>
-              <span v-if="row.static === true"> · Static</span>
               <span v-if="row.diagnosticCode"> · DC {{ row.diagnosticCode }}</span>
             </p>
+            <UBadge
+              class="mt-2"
+              :color="row.static === true ? 'success' : 'neutral'"
+              size="xs"
+              variant="soft"
+            >
+              {{ row.static === true ? 'Static' : row.static === false ? 'Non-static' : 'Static status unavailable' }}
+            </UBadge>
           </li>
         </ul>
       </div>

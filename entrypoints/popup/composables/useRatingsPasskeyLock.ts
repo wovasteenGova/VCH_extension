@@ -11,20 +11,24 @@ const hasCredential = ref(false)
 const supported = ref(false)
 const busy = ref(false)
 const lockError = ref<string | null>(null)
-let initialized = false
 
 export function useRatingsPasskeyLock() {
   async function init() {
-    if (initialized) return
-
     supported.value = isRatingsPasskeySupported()
     const status = await getRatingsLockStatus()
     hasCredential.value = status.hasCredential
-    initialized = true
   }
 
   function lock() {
     unlocked.value = false
+  }
+
+  function syncCredential(credentialId: unknown) {
+    const exists = typeof credentialId === 'string' && credentialId.length > 0
+    if (exists !== hasCredential.value) {
+      lock()
+      hasCredential.value = exists
+    }
   }
 
   async function setupLock() {
@@ -86,6 +90,7 @@ export function useRatingsPasskeyLock() {
     busy,
     lockError,
     init,
+    syncCredential,
     lock,
     setupLock,
     unlock,

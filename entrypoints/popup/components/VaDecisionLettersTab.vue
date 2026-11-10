@@ -69,6 +69,13 @@ function applyLetters(rows: VaLetterIndexRow[]) {
   letters.value = rows
   selected.value = selected.value.filter(value => nextKeys.has(value))
   loaded.value = true
+  error.value = ''
+}
+
+function applySavedLetters(saved: NonNullable<VaDeviceCache['letters']>) {
+  applyLetters(saved.rows)
+  fetchedAt.value = saved.fetchedAt
+  listSource.value = isRecentVaDeviceSync(saved.fetchedAt) ? 'live' : 'saved'
 }
 
 async function load(automatic = false) {
@@ -80,19 +87,15 @@ async function load(automatic = false) {
   try {
     if (!loaded.value) {
       const saved = (await readVaDeviceCache()).letters
-      if (saved) {
-        applyLetters(saved.rows)
-        fetchedAt.value = saved.fetchedAt
-        listSource.value = isRecentVaDeviceSync(saved.fetchedAt) ? 'live' : 'saved'
-      }
+      if (saved && !loaded.value) applySavedLetters(saved)
     }
     if (automatic && isRecentVaDeviceSync(fetchedAt.value)) return
     const { rows: next, ownerEpoch } = await fetchVaDecisionLetterIndex()
+    const previousKeys = new Set(letters.value.map(key))
     const saved = ownerEpoch ? await saveVaLettersCache(next, ownerEpoch) : false
     if (ownerEpoch && !await checkVaCacheEpoch(ownerEpoch)) {
       throw new Error('Your VA.gov account changed. Refresh the letter list and try again.')
     }
-    const previousKeys = new Set(letters.value.map(key))
     applyLetters(next)
     fetchedAt.value = new Date().toISOString()
     listSource.value = saved ? 'live' : 'live-only'
@@ -101,7 +104,7 @@ async function load(automatic = false) {
     }
   } catch (caught) {
     if (loaded.value) {
-      if (listSource.value !== 'live-only') listSource.value = 'saved'
+      if (listSource.value !== 'live-only' && !isRecentVaDeviceSync(fetchedAt.value)) listSource.value = 'saved'
       return
     }
     error.value = caught instanceof Error ? caught.message : 'Could not read VA decision letters.'
@@ -123,14 +126,13 @@ onMounted(() => {
       loaded.value = false
       fetchedAt.value = null
       listSource.value = 'live'
+      error.value = ''
       return
     }
     const next = (cache?.newValue as VaDeviceCache | undefined)?.letters
     const previous = (cache?.oldValue as VaDeviceCache | undefined)?.letters
-    if (next && next.fetchedAt !== previous?.fetchedAt && !loading.value) {
-      applyLetters(next.rows)
-      fetchedAt.value = next.fetchedAt
-      listSource.value = 'live'
+    if (next && next.fetchedAt !== previous?.fetchedAt) {
+      applySavedLetters(next)
     }
   }
   browser.storage.onChanged.addListener(onCacheChanged)
@@ -191,7 +193,7 @@ defineExpose({ selectedLetters, recordOutcome })
     <p v-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
     <p v-if="waitingForImportStatus" role="status" class="text-sm text-muted">Checking your VCH library…</p>
     <p v-else-if="statusUnavailable" class="text-sm text-muted">Could not check your VCH library. Refresh letters to try again.</p>
-    <p v-if="listSource === 'saved'" class="text-sm text-muted">Showing the saved letter list. Open VA.gov if you need to refresh or sign in before importing.</p>
+    <p v-if="listSource === 'saved'" class="text-sm text-muted">Showing the saved letter list. Importing a PDF requires an active VA.gov session.</p>
     <p v-else-if="listSource === 'live-only'" class="text-sm text-muted">You can import these letters now. The list could not be saved for offline use.</p>
     <p v-if="loaded && !letters.length" class="text-sm text-muted">No decision letters in this list. If you expect a letter, check the claim letters page on VA.gov.</p>
     <div v-if="selectableLetters.length" class="flex flex-wrap items-center justify-between gap-2">

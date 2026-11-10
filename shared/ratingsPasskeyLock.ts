@@ -1,4 +1,4 @@
-const STORAGE_CREDENTIAL_ID = 'vch_ratings_lock_credential_id'
+export const RATINGS_LOCK_CREDENTIAL_KEY = 'vch_ratings_lock_credential_id'
 const STORAGE_CREDENTIAL_TRANSPORTS = 'vch_ratings_lock_credential_transports'
 
 const DEFAULT_PASSKEY_TRANSPORTS: AuthenticatorTransport[] = [
@@ -84,8 +84,8 @@ export function isRatingsPasskeySupported() {
 }
 
 export async function getRatingsLockStatus(): Promise<RatingsLockStatus> {
-  const stored = await browser.storage.local.get(STORAGE_CREDENTIAL_ID)
-  const credentialId = stored[STORAGE_CREDENTIAL_ID]
+  const stored = await browser.storage.local.get(RATINGS_LOCK_CREDENTIAL_KEY)
+  const credentialId = stored[RATINGS_LOCK_CREDENTIAL_KEY]
   return {
     hasCredential: typeof credentialId === 'string' && credentialId.length > 0
   }
@@ -136,7 +136,7 @@ export async function registerRatingsPasskeyLock() {
   }
 
   await browser.storage.local.set({
-    [STORAGE_CREDENTIAL_ID]: bufferToBase64url(credential.rawId),
+    [RATINGS_LOCK_CREDENTIAL_KEY]: bufferToBase64url(credential.rawId),
     [STORAGE_CREDENTIAL_TRANSPORTS]: credentialTransports(credential)
   })
 }
@@ -147,10 +147,10 @@ export async function unlockRatingsWithPasskey() {
   }
 
   const stored = await browser.storage.local.get([
-    STORAGE_CREDENTIAL_ID,
+    RATINGS_LOCK_CREDENTIAL_KEY,
     STORAGE_CREDENTIAL_TRANSPORTS
   ])
-  const credentialId = stored[STORAGE_CREDENTIAL_ID]
+  const credentialId = stored[RATINGS_LOCK_CREDENTIAL_KEY]
   if (typeof credentialId !== 'string' || !credentialId) {
     throw new Error('Set up a passkey before viewing ratings.')
   }
@@ -182,7 +182,7 @@ export async function unlockRatingsWithPasskey() {
 
 export async function clearRatingsPasskeyLockCredential() {
   await browser.storage.local.remove([
-    STORAGE_CREDENTIAL_ID,
+    RATINGS_LOCK_CREDENTIAL_KEY,
     STORAGE_CREDENTIAL_TRANSPORTS
   ])
 }

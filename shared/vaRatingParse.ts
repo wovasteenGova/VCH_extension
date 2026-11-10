@@ -70,7 +70,7 @@ function parseIndividualRating(raw: unknown, index: number): ParsedVaRating | nu
     effectiveDate: readString(attrs.effectiveDate),
     ratingEndDate: readString(attrs.ratingEndDate),
     diagnosticCode: readString(attrs.diagnosticTypeCode ?? attrs.hyphDiagnosticTypeCode),
-    static: readStatic(attrs.staticInd ?? attrs.staticIndicator)
+    static: readStatic(attrs.staticInd ?? attrs.staticIndicator ?? attrs.static_ind ?? attrs.static_indicator)
   }
 }
 
