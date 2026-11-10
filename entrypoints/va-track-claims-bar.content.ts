@@ -203,7 +203,7 @@ export default defineContentScript({
       }
 
       const meta = await requestVaCachePageSummary()
-      if (meta && !meta.unlocked && await hasLocalDataConsent()) {
+      if (meta && !meta.available && await hasLocalDataConsent()) {
         subtitleEl.textContent = 'Unlock VA data in the VCH extension'
         subtitleEl.className = 'subtitle status-warn'
         detailEl.textContent = 'Open the extension and enter your passphrase to use saved claims or sync.'

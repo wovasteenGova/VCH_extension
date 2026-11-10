@@ -33,6 +33,9 @@ beforeEach(async () => {
     const stored: Record<string, unknown> = {}
     return {
       get: async (key: string | null) => key === null ? { ...stored } : { [key]: stored[key] },
+      remove: async (key: string | string[]) => {
+        for (const name of Array.isArray(key) ? key : [key]) delete stored[name]
+      },
       set: async (patch: Record<string, unknown>) => { Object.assign(stored, patch) }
     }
   }

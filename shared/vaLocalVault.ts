@@ -9,7 +9,7 @@ const decoder = new TextDecoder()
 type SealedRecord = { version: 1, iv: string, ciphertext: string }
 type VaultConfig = { id: string, salt: string, check: SealedRecord }
 type VaultSession = { id: string, key: string }
-export type VaVaultStatus = 'setup' | 'locked' | 'unlocked'
+export type VaVaultStatus = 'session' | 'locked' | 'unlocked'
 
 export function withVaVaultLock<T>(task: () => Promise<T>) {
   return globalThis.navigator?.locks?.request('vch-va-local-vault', task) ?? task()
@@ -59,9 +59,7 @@ async function readSession(config: VaultConfig) {
   return session?.id === config.id && typeof session.key === 'string' ? session : undefined
 }
 
-async function sessionKey() {
-  const config = await readConfig()
-  if (!config) return null
+async function sessionKey(config: VaultConfig) {
   const session = await readSession(config)
   if (!session) return null
   return crypto.subtle.importKey('raw', decode(session.key), 'AES-GCM', false, ['encrypt', 'decrypt'])
@@ -69,8 +67,25 @@ async function sessionKey() {
 
 export async function readVaVaultStatus(): Promise<VaVaultStatus> {
   const config = await readConfig()
-  if (!config) return 'setup'
+  if (!config) return 'session'
   return await readSession(config) ? 'unlocked' : 'locked'
+}
+
+function isVaRecord(name: string) {
+  return name === 'vch-va-device-cache-v1' || name === 'vch-va-cache-owner-v1'
+    || name.startsWith('vch-va-letter-status:') || name.startsWith('vch-va-profile-sync:')
+}
+
+export function prepareVaSessionCache() {
+  return withVaVaultLock(async () => {
+    if (await readConfig()) return
+    const local = await browser.storage.local.get(null)
+    const names = Object.keys(local).filter(isVaRecord)
+    if (!names.length) return
+    const session = await browser.storage.session.get(names)
+    await browser.storage.session.set(Object.fromEntries(names.map(name => [name, session[name] ?? local[name]])))
+    await browser.storage.local.remove(names)
+  })
 }
 
 export function unlockVaVault(passphrase: string, hasConsent: () => Promise<boolean>) {
@@ -95,19 +110,27 @@ export function unlockVaVault(passphrase: string, hasConsent: () => Promise<bool
     }
     const id = existing?.id ?? crypto.randomUUID()
     const raw = await crypto.subtle.exportKey('raw', key)
+    const session = { id, key: encode(new Uint8Array(raw)) }
     if (!existing) {
       const local = await browser.storage.local.get(null)
+      const inMemory = await browser.storage.session.get(null)
+      const names = Object.keys({ ...local, ...inMemory }).filter(isVaRecord)
       const records: Record<string, unknown> = {}
-      for (const [name, value] of Object.entries(local)) {
-        if (name === 'vch-va-device-cache-v1' || name === 'vch-va-cache-owner-v1'
-          || name.startsWith('vch-va-letter-status:') || name.startsWith('vch-va-profile-sync:')) {
-          records[name] = await seal(name, value, key)
-        }
+      for (const name of names) {
+        records[name] = await seal(name, inMemory[name] ?? local[name], key)
       }
       records[VA_VAULT_CONFIG_KEY] = { id, salt, check: await seal(VA_VAULT_CONFIG_KEY, PASSPHRASE_CHECK, key) }
-      await browser.storage.local.set(records)
+      await browser.storage.session.set({ [VA_VAULT_SESSION_KEY]: session })
+      try {
+        await browser.storage.local.set(records)
+      } catch (error) {
+        await browser.storage.session.remove(VA_VAULT_SESSION_KEY)
+        throw error
+      }
+      await browser.storage.session.remove(names)
+      return
     }
-    await browser.storage.session.set({ [VA_VAULT_SESSION_KEY]: { id, key: encode(new Uint8Array(raw)) } })
+    await browser.storage.session.set({ [VA_VAULT_SESSION_KEY]: session })
   })
 }
 
@@ -115,8 +138,33 @@ export function lockVaVault() {
   return withVaVaultLock(() => browser.storage.session.remove(VA_VAULT_SESSION_KEY))
 }
 
+export function useVaSessionCache() {
+  return withVaVaultLock(async () => {
+    const config = await readConfig()
+    if (!config) return
+    const key = await sessionKey(config)
+    if (!key) throw new Error('Unlock saved VA data first.')
+    const local = await browser.storage.local.get(null)
+    const names = Object.keys(local).filter(isVaRecord)
+    const records: Record<string, unknown> = {}
+    for (const name of names) {
+      records[name] = await unseal(name, local[name] as SealedRecord, key)
+    }
+    await browser.storage.session.set(records)
+    try {
+      await browser.storage.local.remove([VA_VAULT_CONFIG_KEY, ...names])
+    } catch (error) {
+      await browser.storage.session.remove(names)
+      throw error
+    }
+    await browser.storage.session.remove(VA_VAULT_SESSION_KEY)
+  })
+}
+
 export async function readVaVaultRecord<T>(name: string): Promise<T | undefined> {
-  const key = await sessionKey()
+  const config = await readConfig()
+  if (!config) return (await browser.storage.session.get(name))[name] as T | undefined
+  const key = await sessionKey(config)
   if (!key) return undefined
   const value = (await browser.storage.local.get(name))[name] as SealedRecord | undefined
   return value === undefined ? undefined : await unseal(name, value, key) as T
@@ -124,7 +172,12 @@ export async function readVaVaultRecord<T>(name: string): Promise<T | undefined>
 
 /** Call within withVaVaultLock so a lock or reset cannot race the write. */
 export async function writeVaVaultRecord(name: string, value: unknown) {
-  const key = await sessionKey()
+  const config = await readConfig()
+  if (!config) {
+    await browser.storage.session.set({ [name]: value })
+    return true
+  }
+  const key = await sessionKey(config)
   if (!key) return false
   await browser.storage.local.set({ [name]: await seal(name, value, key) })
   return true

@@ -3,7 +3,7 @@ import { hasLocalDataConsent } from '@/shared/privacyConsent'
 import { unlockVaVault } from '@/shared/vaLocalVault'
 
 const props = defineProps<{ setup: boolean }>()
-const emit = defineEmits<{ unlocked: [], privacy: [] }>()
+const emit = defineEmits<{ unlocked: [], dismiss: [] }>()
 const passphrase = ref('')
 const confirmation = ref('')
 const busy = ref(false)
@@ -59,7 +59,7 @@ async function submit() {
       <p v-if="error" role="alert" class="text-error">{{ error }}</p>
       <div class="flex flex-wrap items-center gap-2">
         <UButton type="submit" :loading="busy">{{ setup ? 'Encrypt saved VA data' : 'Unlock' }}</UButton>
-        <UButton type="button" color="neutral" variant="outline" :disabled="busy" @click="emit('privacy')">Data controls</UButton>
+        <UButton v-if="setup" type="button" color="neutral" variant="outline" :disabled="busy" @click="emit('dismiss')">Not now</UButton>
       </div>
     </form>
   </section>

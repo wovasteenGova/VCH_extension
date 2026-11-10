@@ -26,7 +26,7 @@ export type VaPageClaimsSyncResult = {
 /** The VA.gov Sync button also warms the local ratings and letter list. */
 export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
   const summary = await requestVaCachePageSummary()
-  if (!summary?.unlocked) {
+  if (!summary?.available) {
     return { ok: false, count: 0, appeals: 0, files: 0, error: 'Unlock your saved VA data in the extension before syncing.' }
   }
   void fetchVaJsonInPage(VA_ENDPOINTS.ratedDisabilities).then(result => {

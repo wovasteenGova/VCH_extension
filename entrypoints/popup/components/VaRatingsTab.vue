@@ -266,8 +266,8 @@ onMounted(async () => {
     }
   })
   const onStorage = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
-    if (area !== 'local') return
-    const credential = changes[RATINGS_LOCK_CREDENTIAL_KEY]
+    if (area !== 'local' && area !== 'session') return
+    const credential = area === 'local' ? changes[RATINGS_LOCK_CREDENTIAL_KEY] : undefined
     if (credential) syncCredential(credential.newValue)
     if (changes[VA_CACHE_OWNER_KEY]) {
       lockRatings()

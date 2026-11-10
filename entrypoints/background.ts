@@ -1,6 +1,6 @@
 import { consumeVaTrackClaimsIntent } from '@/shared/vaSignInNavigation'
 import { applyVaCacheMutation, checkVaCacheEpoch, establishVaCacheOwner, readVaCachePageSummary, VA_CACHE_PAGE_SUMMARY, VA_CACHE_WRITE, VA_DEVICE_CACHE_STORAGE_KEY } from '@/shared/vaDeviceCache'
-import { readVaVaultStatus, VA_VAULT_SESSION_KEY } from '@/shared/vaLocalVault'
+import { prepareVaSessionCache, readVaVaultStatus, VA_VAULT_SESSION_KEY } from '@/shared/vaLocalVault'
 import { hasCloudConsent, hasLocalDataConsent, PRIVACY_CONSENT_KEY } from '@/shared/privacyConsent'
 import { isClaimBuilderBridgeOrigin } from '@/shared/claimBuilderBridge'
 
@@ -18,6 +18,7 @@ import { vaFetch } from '@/shared/vaClient'
 import { requestVa } from '@/shared/vaRequest'
 
 export default defineBackground(() => {
+  void prepareVaSessionCache().catch(() => undefined)
   let letterRefresh: Promise<VaDecisionLetterRefreshResult> | undefined
   function refreshDecisionLetters() {
     const accountStore = { establishOwner: establishVaCacheOwner, checkEpoch: checkVaCacheEpoch }
@@ -36,7 +37,7 @@ export default defineBackground(() => {
 
   browser.storage.onChanged.addListener((changes, area) => {
     if ((area === 'local' && (VA_DEVICE_CACHE_STORAGE_KEY in changes || PRIVACY_CONSENT_KEY in changes))
-      || (area === 'session' && changes[VA_VAULT_SESSION_KEY]?.newValue)) {
+      || (area === 'session' && (VA_DEVICE_CACHE_STORAGE_KEY in changes || changes[VA_VAULT_SESSION_KEY]?.newValue))) {
       scheduleApprovedClaimSync()
     }
   })
@@ -103,7 +104,7 @@ export default defineBackground(() => {
       void (async () => {
         try {
           if (!await hasLocalDataConsent()) { sendResponse({ connected: false, label: 'Enable VA access in the VCH extension' }); return }
-          if (await readVaVaultStatus() !== 'unlocked') { sendResponse({ connected: false, label: 'Unlock VA data in the VCH extension' }); return }
+          if (await readVaVaultStatus() === 'locked') { sendResponse({ connected: false, label: 'Unlock VA data in the VCH extension' }); return }
           sendResponse(await probeVaSession())
         } catch {
           sendResponse({ connected: false, label: 'Sign in to VA.gov' })

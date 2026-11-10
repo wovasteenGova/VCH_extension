@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { acceptLocalDataAccess, clearVaDataAndConsent } from '@/shared/privacyConsent'
-import { lockVaVault } from '@/shared/vaLocalVault'
+import { lockVaVault, useVaSessionCache, type VaVaultStatus } from '@/shared/vaLocalVault'
+import VaCacheUnlock from './VaCacheUnlock.vue'
 
-const props = defineProps<{ accepted: boolean, clearDisabled?: boolean, vaultUnlocked?: boolean }>()
-const emit = defineEmits<{ accepted: [], cleared: [], close: [], locked: [] }>()
+const props = defineProps<{ accepted: boolean, clearDisabled?: boolean, vaultStatus?: VaVaultStatus | null }>()
+const emit = defineEmits<{ accepted: [], cleared: [], close: [], locked: [], vaultChanged: [] }>()
 const localApproval = ref(false)
+const showProtection = ref(false)
 const busy = ref(false)
 const error = ref('')
 const toast = useToast()
@@ -37,6 +39,25 @@ async function lock() {
     busy.value = false
   }
 }
+
+async function useSessionOnly() {
+  if (busy.value || props.clearDisabled) return
+  error.value = ''
+  busy.value = true
+  try {
+    await useVaSessionCache()
+    emit('vaultChanged')
+  } catch {
+    error.value = 'Could not switch to session storage. Try again.'
+  } finally {
+    busy.value = false
+  }
+}
+
+function unlocked() {
+  showProtection.value = false
+  emit('vaultChanged')
+}
 </script>
 
 <template>
@@ -46,15 +67,25 @@ async function lock() {
       <UButton v-if="accepted" aria-label="Close privacy settings" icon="i-lucide-x" variant="ghost" color="error" @click="emit('close')" />
     </div>
     <p>With your permission, VCH reads claims, appeals, disability ratings, and profile details from your existing VA.gov session. Opening Letters checks which decision letters are available. Profile details can include your name, birth date, phone, service history, and the last four digits of your SSN.</p>
-    <p>Your cache passphrase encrypts VA records saved in this browser. Unlock them to view or sync VA data. The cache locks when you restart the browser or choose Lock saved VA data.</p>
+    <p>By default, the browser clears cached VA data when it restarts. You can set a passphrase here to keep an encrypted copy between sessions.</p>
     <p>Your VA password and VA session cookies are never sent to VCH. Optional imports use your VCH sign-in to authenticate requests to your account. With sync approval and auto-sync enabled, claims and appeals sync when they change. Ratings and selected PDFs are saved when you choose Save.</p>
     <template v-if="!accepted">
-      <UCheckbox v-model="localApproval" label="Allow VCH to read my signed-in VA.gov data and save it on this device." />
+      <UCheckbox v-model="localApproval" label="Allow VCH to read my signed-in VA.gov data and cache it in this browser." />
       <UButton :disabled="!localApproval || busy" :loading="busy" @click="enableLocal">Enable VA data access</UButton>
     </template>
     <template v-else>
       <p>Manage your VCH account’s sync approval and auto-sync in VA Profile under Sync Approved.</p>
-      <UButton v-if="vaultUnlocked" color="neutral" variant="outline" icon="i-lucide-lock" :disabled="busy || clearDisabled" @click="lock">Lock saved VA data</UButton>
+      <VaCacheUnlock
+        v-if="vaultStatus === 'locked' || (vaultStatus === 'session' && showProtection)"
+        :setup="vaultStatus === 'session'"
+        @unlocked="unlocked"
+        @dismiss="showProtection = false"
+      />
+      <UButton v-else-if="vaultStatus === 'session'" color="neutral" variant="outline" icon="i-lucide-lock" :disabled="busy || clearDisabled" @click="showProtection = true">Protect your saved VA data</UButton>
+      <div v-else-if="vaultStatus === 'unlocked'" class="flex flex-wrap gap-2">
+        <UButton color="neutral" variant="outline" icon="i-lucide-lock" :disabled="busy || clearDisabled" @click="lock">Lock saved VA data</UButton>
+        <UButton color="neutral" variant="outline" :disabled="busy || clearDisabled" @click="useSessionOnly">Keep for this session only</UButton>
+      </div>
       <UButton color="error" variant="outline" :loading="busy" :disabled="clearDisabled" @click="clear">Clear local VA data and revoke access</UButton>
       <p class="text-xs text-muted">Clearing here removes cached VA data and permissions from this extension. Delete imported documents and cloud data separately in your VCH account. Theme and display preferences are preserved.</p>
     </template>

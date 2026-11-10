@@ -127,7 +127,7 @@ onMounted(() => {
     if (next && next.fetchedAt !== fetchedAt.value) applySavedLetters(next)
   })
   const onCacheChanged = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
-    if (area !== 'local' || !changes[VA_CACHE_OWNER_KEY]) return
+    if ((area !== 'local' && area !== 'session') || !changes[VA_CACHE_OWNER_KEY]) return
     letters.value = []
     selected.value = []
     outcomes.value = {}

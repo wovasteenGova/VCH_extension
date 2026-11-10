@@ -110,7 +110,7 @@ export async function readVaCachePageSummary() {
     lastSyncedAt: cache.lastSyncedAt,
     count: cache.claims.length,
     appeals: cache.appeals.length,
-    unlocked: await readVaVaultStatus() === 'unlocked'
+    available: await readVaVaultStatus() !== 'locked'
   }
 }
 
@@ -169,14 +169,14 @@ export async function checkVaCacheEpoch(epoch: unknown) {
 export function establishVaCacheOwner(accountId: string): Promise<string | null> {
   const next = writes.then(() => withVaVaultLock(async () => {
     if (!await hasLocalDataConsent() || !/^[a-z0-9-]{8,100}$/i.test(accountId)
-      || await readVaVaultStatus() !== 'unlocked') return null
+      || await readVaVaultStatus() === 'locked') return null
     const owner = await readVaVaultRecord<CacheOwner>(VA_CACHE_OWNER_KEY)
     if (owner?.accountId === accountId && typeof owner.epoch === 'string') return owner.epoch
-    const stored = await browser.storage.local.get(null)
-    if (owner || stored[CACHE_KEY]) await revokeCloudConsent()
-    const receipts = Object.keys(stored).filter(name => name.startsWith('vch-va-letter-status:') || name.startsWith('vch-va-profile-sync:'))
-    await browser.storage.local.remove(CACHE_KEY)
-    await browser.storage.local.remove(receipts)
+    const [local, session] = await Promise.all([browser.storage.local.get(null), browser.storage.session.get(null)])
+    if (owner || local[CACHE_KEY] || session[CACHE_KEY]) await revokeCloudConsent()
+    const receipts = Object.keys({ ...local, ...session }).filter(name => name.startsWith('vch-va-letter-status:') || name.startsWith('vch-va-profile-sync:'))
+    await browser.storage.local.remove([CACHE_KEY, ...receipts])
+    await browser.storage.session.remove([CACHE_KEY, ...receipts])
     const epoch = crypto.randomUUID()
     return await writeVaVaultRecord(VA_CACHE_OWNER_KEY, { accountId, epoch }) ? epoch : null
   })).catch(() => null)
@@ -242,7 +242,7 @@ export function subscribeVaDeviceCache(listener: (cache: VaDeviceCache) => void)
     changes: Record<string, Browser.storage.StorageChange>,
     areaName: string
   ) => {
-    if (areaName !== 'local') return
+    if (areaName !== 'local' && areaName !== 'session') return
     if (!changes[CACHE_KEY] && !changes[VA_CACHE_OWNER_KEY]) return
     const current = ++request
     void readVaDeviceCache().then(cache => { if (request === current) listener(cache) })

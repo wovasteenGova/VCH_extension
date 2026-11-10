@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyVaCacheMutation, establishVaCacheOwner, isRecentVaDeviceSync, readVaDeviceCache, VA_CACHE_OWNER_KEY, VA_DEVICE_CACHE_STORAGE_KEY } from '../shared/vaDeviceCache'
 import { hasLocalDataConsent } from '../shared/privacyConsent'
-import { lockVaVault, readVaVaultRecord, readVaVaultStatus, unlockVaVault, VA_VAULT_CONFIG_KEY, VA_VAULT_SESSION_KEY, withVaVaultLock, writeVaVaultRecord } from '../shared/vaLocalVault'
+import { lockVaVault, prepareVaSessionCache, readVaVaultRecord, readVaVaultStatus, unlockVaVault, useVaSessionCache, VA_VAULT_CONFIG_KEY, VA_VAULT_SESSION_KEY, withVaVaultLock, writeVaVaultRecord } from '../shared/vaLocalVault'
 
 vi.mock('../shared/privacyConsent', () => ({ hasLocalDataConsent: vi.fn(async () => true), revokeCloudConsent: vi.fn() }))
 let stored: Record<string, unknown>
@@ -86,7 +86,7 @@ describe('VA cache correctness', () => {
   })
 
   it('migrates existing VA data, forgets the key when locked, and unlocks without VA access', async () => {
-    expect(await readVaVaultStatus()).toBe('setup')
+    expect(await readVaVaultStatus()).toBe('session')
     expect((await readVaDeviceCache()).claims).toEqual([])
     await unlockVaVault(passphrase, hasLocalDataConsent)
     const disk = JSON.stringify(stored)
@@ -109,6 +109,31 @@ describe('VA cache correctness', () => {
     expect(stored[VA_DEVICE_CACHE_STORAGE_KEY]).toBeDefined()
     await unlockVaVault(passphrase, hasLocalDataConsent)
     expect((await readVaDeviceCache()).claims).toEqual([legacyClaim])
+  })
+
+  it('keeps the cache in memory by default and preserves it when changing the storage setting', async () => {
+    await prepareVaSessionCache()
+    expect(stored[VA_DEVICE_CACHE_STORAGE_KEY]).toBeUndefined()
+    expect(stored[VA_CACHE_OWNER_KEY]).toBeUndefined()
+    expect((await readVaDeviceCache()).claims).toEqual([legacyClaim])
+    const letters = [{ documentUuid: 'session-letter', document_type: '184' }]
+    expect(await applyVaCacheMutation({ field: 'letters', value: letters, ownerEpoch: 'epoch-a' })).toBe(true)
+    expect(stored[VA_DEVICE_CACHE_STORAGE_KEY]).toBeUndefined()
+    expect(await readVaDeviceCache()).toMatchObject({ letters: { rows: letters } })
+
+    await unlockVaVault(passphrase, hasLocalDataConsent)
+    expect(session[VA_DEVICE_CACHE_STORAGE_KEY]).toBeUndefined()
+    expect(JSON.stringify(stored)).not.toContain('session-letter')
+    expect(await readVaDeviceCache()).toMatchObject({ letters: { rows: letters } })
+
+    await useVaSessionCache()
+    expect(await readVaVaultStatus()).toBe('session')
+    expect(stored[VA_DEVICE_CACHE_STORAGE_KEY]).toBeUndefined()
+    expect(stored[VA_VAULT_CONFIG_KEY]).toBeUndefined()
+    expect(session[VA_VAULT_SESSION_KEY]).toBeUndefined()
+    expect(await readVaDeviceCache()).toMatchObject({ letters: { rows: letters } })
+    for (const key of Object.keys(session)) delete session[key]
+    expect((await readVaDeviceCache()).letters).toBeNull()
   })
 
   it('authenticates record names and does not overwrite unreadable ciphertext on sync', async () => {

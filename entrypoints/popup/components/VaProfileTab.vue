@@ -87,7 +87,8 @@ onMounted(() => {
   void refreshTrack()
   const stop = subscribeVaDeviceCache(() => { void refreshTrack() })
   const onSyncSettingsChanged = (changes: Record<string, unknown>, area: string) => {
-    if (area === 'local' && !updatingApproval.value && (PRIVACY_CONSENT_KEY in changes || (VA_PROFILE_SYNC_STATE_PREFIX + accountId.value) in changes)) {
+    if ((area === 'local' || area === 'session') && !updatingApproval.value
+      && (PRIVACY_CONSENT_KEY in changes || (VA_PROFILE_SYNC_STATE_PREFIX + accountId.value) in changes)) {
       void refreshAccount()
     }
   }
