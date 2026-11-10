@@ -18,8 +18,8 @@ import { formatLastSynced, subscribeVaDeviceCache } from '@/shared/vaDeviceCache
 const props = defineProps<{ active: boolean, tracking?: boolean, trackAfterSave?: boolean }>()
 const emit = defineEmits<{ privacy: [], saving: [busy: boolean], track: [] }>()
 const profileTabs = [
-  { label: 'Ratings', value: 'ratings', slot: 'ratings', icon: 'i-lucide-percent' },
-  { label: 'Letters', value: 'letters', slot: 'letters', icon: 'i-lucide-file-text' }
+  { label: 'Ratings', value: 'ratings', slot: 'ratings', labelIcon: 'i-lucide-percent' },
+  { label: 'Letters', value: 'letters', slot: 'letters', labelIcon: 'i-lucide-file-text' }
 ]
 const activeProfileTab = ref('ratings')
 const ratings = ref<InstanceType<typeof VaRatingsTab> | null>(null)
@@ -277,10 +277,14 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
         :ui="{
           list: 'gap-2 bg-transparent p-0',
           indicator: 'hidden',
-          trigger: 'group/profile-tab rounded-none border-x border-y-0 border-default data-[state=active]:rounded-[20%] data-[state=active]:border-primary data-[state=active]:text-primary',
-          label: 'rounded-[5%] px-2 py-0.5 group-data-[state=active]/profile-tab:bg-primary/15'
+          trigger: 'va-profile-tab-trigger group/profile-tab relative rounded-none border-0 data-[state=active]:rounded-[20%] data-[state=active]:text-primary',
+          label: 'inline-flex items-center gap-1.5 rounded-[5%] px-2 py-0.5 group-data-[state=active]/profile-tab:bg-primary/15'
         }"
       >
+        <template #default="{ item }">
+          <UIcon :name="item.labelIcon" class="size-4 shrink-0" aria-hidden="true" />
+          {{ item.label }}
+        </template>
         <template #ratings>
           <VaRatingsTab ref="ratings" :active="active && activeProfileTab === 'ratings'" />
         </template>
@@ -298,3 +302,18 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
     </div>
   </section>
 </template>
+
+<style scoped>
+/* Draw the strokes separately so the active tab's radius cannot bend them. */
+:deep(.va-profile-tab-trigger::before) {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-inline: 1px solid var(--ui-border);
+  pointer-events: none;
+}
+
+:deep(.va-profile-tab-trigger[data-state='active']::before) {
+  border-inline-color: var(--ui-primary);
+}
+</style>
