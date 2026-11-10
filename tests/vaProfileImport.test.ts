@@ -6,6 +6,7 @@ import { readVaTrackBridgeCachePayload } from '../shared/vaTrackBridgeCache'
 import { importTrackSnapshotToClaimBuilder } from '../shared/claimBuilderTrackImport'
 import { importVaRatingsToClaimBuilder } from '../shared/claimBuilderVaImport'
 import { sendDecisionLetterToVch } from '../shared/decisionLetterImport'
+import { unlockVaVault } from '../shared/vaLocalVault'
 
 vi.mock('../shared/hubSessionRead', () => ({ readHubSession: vi.fn() }))
 vi.mock('../shared/privacyConsent', () => ({ readVaProfileCloudApproval: vi.fn() }))
@@ -20,7 +21,7 @@ const selection = { accountId: 'account-a', ratings, letters: [letter('one'), le
 const track = { ok: true as const, claims: [{ id: 'fixture-claim' } as never], appeals: [], deviceLastSyncedAt: null, vaLabel: null }
 const approval = { acceptedAt: '2026-10-01T00:00:00Z', autoSyncTrack: false }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
   vi.mocked(readHubSession).mockResolvedValue({ connected: true, canImport: true, label: 'Fixture', accessToken: 'token', accountId: 'account-a', hubOrigin: 'https://www.veteranscentralhub.com' })
   vi.mocked(importVaRatingsToClaimBuilder).mockResolvedValue({ ok: true, combinedRating: 70, conditionCount: 1, appliedToConditionIds: [], appliedProfileFields: [] })
@@ -28,11 +29,15 @@ beforeEach(() => {
   vi.mocked(importTrackSnapshotToClaimBuilder).mockResolvedValue({ ok: true, claimCount: 1, appealCount: 0 })
   vi.mocked(readVaProfileCloudApproval).mockResolvedValue(approval)
   vi.mocked(readVaTrackBridgeCachePayload).mockResolvedValue(track)
-  const stored: Record<string, unknown> = {}
-  vi.stubGlobal('browser', { storage: { local: {
-    get: async (key: string) => ({ [key]: stored[key] }),
-    set: async (patch: Record<string, unknown>) => { Object.assign(stored, patch) }
-  } } })
+  const storageArea = () => {
+    const stored: Record<string, unknown> = {}
+    return {
+      get: async (key: string | null) => key === null ? { ...stored } : { [key]: stored[key] },
+      set: async (patch: Record<string, unknown>) => { Object.assign(stored, patch) }
+    }
+  }
+  vi.stubGlobal('browser', { storage: { local: storageArea(), session: storageArea() } })
+  await unlockVaVault('synthetic-test-passphrase', async () => true)
 })
 
 describe('shared VA Profile approval', () => {

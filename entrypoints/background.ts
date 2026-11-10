@@ -1,5 +1,6 @@
 import { consumeVaTrackClaimsIntent } from '@/shared/vaSignInNavigation'
-import { applyVaCacheMutation, checkVaCacheEpoch, establishVaCacheOwner, VA_CACHE_WRITE, VA_DEVICE_CACHE_STORAGE_KEY } from '@/shared/vaDeviceCache'
+import { applyVaCacheMutation, checkVaCacheEpoch, establishVaCacheOwner, readVaCachePageSummary, VA_CACHE_PAGE_SUMMARY, VA_CACHE_WRITE, VA_DEVICE_CACHE_STORAGE_KEY } from '@/shared/vaDeviceCache'
+import { readVaVaultStatus, VA_VAULT_SESSION_KEY } from '@/shared/vaLocalVault'
 import { hasCloudConsent, hasLocalDataConsent, PRIVACY_CONSENT_KEY } from '@/shared/privacyConsent'
 import { isClaimBuilderBridgeOrigin } from '@/shared/claimBuilderBridge'
 
@@ -34,7 +35,8 @@ export default defineBackground(() => {
   }
 
   browser.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && (VA_DEVICE_CACHE_STORAGE_KEY in changes || PRIVACY_CONSENT_KEY in changes)) {
+    if ((area === 'local' && (VA_DEVICE_CACHE_STORAGE_KEY in changes || PRIVACY_CONSENT_KEY in changes))
+      || (area === 'session' && changes[VA_VAULT_SESSION_KEY]?.newValue)) {
       scheduleApprovedClaimSync()
     }
   })
@@ -59,6 +61,11 @@ export default defineBackground(() => {
       // The popup can close while VA is responding. Keep the request and save here.
       letterRefresh ??= refreshDecisionLetters().finally(() => { letterRefresh = undefined })
       void letterRefresh.then(sendResponse)
+      return true
+    }
+    if (message?.type === VA_CACHE_PAGE_SUMMARY) {
+      if (!vaPage || sender.frameId !== 0) return
+      void readVaCachePageSummary().then(sendResponse, () => sendResponse(null))
       return true
     }
     if (message?.type === 'VCH_SYNC_APPROVED_VA_TRACK') {
@@ -96,6 +103,7 @@ export default defineBackground(() => {
       void (async () => {
         try {
           if (!await hasLocalDataConsent()) { sendResponse({ connected: false, label: 'Enable VA access in the VCH extension' }); return }
+          if (await readVaVaultStatus() !== 'unlocked') { sendResponse({ connected: false, label: 'Unlock VA data in the VCH extension' }); return }
           sendResponse(await probeVaSession())
         } catch {
           sendResponse({ connected: false, label: 'Sign in to VA.gov' })

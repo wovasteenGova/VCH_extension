@@ -6,6 +6,7 @@ import { mergeParsedClaims, type ParsedVaClaim } from './vaClaimParse'
 import type { ParsedVaRating } from './vaRatingParse'
 import type { ParsedVaUserProfileForImport } from './vaUserProfileParse'
 import { mergeVaUserProfileImports } from './vaUserProfileParse'
+import { readVaVaultRecord, readVaVaultStatus, withVaVaultLock, writeVaVaultRecord } from './vaLocalVault'
 
 export const VA_DEVICE_CACHE_STORAGE_KEY = 'vch-va-device-cache-v1'
 export const VA_CACHE_OWNER_KEY = 'vch-va-cache-owner-v1'
@@ -57,21 +58,12 @@ export function parseVaDeviceCacheRecord(raw: unknown): VaDeviceCache {
   }
 }
 
-function storageGet(): Promise<VaDeviceCache> {
-  if (!browser.storage?.local?.get) return Promise.resolve({ ...EMPTY_CACHE })
-
-  return browser.storage.local.get(CACHE_KEY).then((result) => {
-    return parseVaDeviceCacheRecord(result[CACHE_KEY])
-  }).catch(() => ({ ...EMPTY_CACHE }))
-}
-
-function storageSet(cache: VaDeviceCache): Promise<boolean> {
-  if (!browser.storage?.local?.set) return Promise.resolve(false)
-  return browser.storage.local.set({ [CACHE_KEY]: cache }).then(() => true).catch(() => false)
+async function storageGet(): Promise<VaDeviceCache> {
+  return parseVaDeviceCacheRecord(await readVaVaultRecord(CACHE_KEY))
 }
 
 export async function readVaDeviceCache(): Promise<VaDeviceCache> {
-  return await hasLocalDataConsent() ? storageGet() : { ...EMPTY_CACHE }
+  return await hasLocalDataConsent() ? storageGet().catch(() => ({ ...EMPTY_CACHE })) : { ...EMPTY_CACHE }
 }
 
 export type VaCacheMeta = {
@@ -110,6 +102,26 @@ export async function readVaCacheMeta(): Promise<VaCacheMeta> {
   return cacheMetaFromDevice(await readVaDeviceCache())
 }
 
+export const VA_CACHE_PAGE_SUMMARY = 'VCH_VA_CACHE_PAGE_SUMMARY'
+
+export async function readVaCachePageSummary() {
+  const cache = await readVaDeviceCache()
+  return {
+    lastSyncedAt: cache.lastSyncedAt,
+    count: cache.claims.length,
+    appeals: cache.appeals.length,
+    unlocked: await readVaVaultStatus() === 'unlocked'
+  }
+}
+
+export async function requestVaCachePageSummary(): Promise<Awaited<ReturnType<typeof readVaCachePageSummary>> | null> {
+  try {
+    return await browser.runtime.sendMessage({ type: VA_CACHE_PAGE_SUMMARY }) ?? null
+  } catch {
+    return null
+  }
+}
+
 /** Header chip text: say what is actually saved, not a blanket "everything is cached". */
 export function describeSavedVaCache(meta: VaCacheMeta) {
   const parts: string[] = []
@@ -146,30 +158,35 @@ export const VA_CACHE_WRITE = 'VCH_VA_CACHE_WRITE'
 type CacheMutation = { field: 'claims' | 'appeals' | 'ratings' | 'profile' | 'letters' | 'meta', value: unknown, ownerEpoch?: string | null }
 let writes: Promise<unknown> = Promise.resolve()
 
+type CacheOwner = { accountId: string, epoch: string }
+
 export async function checkVaCacheEpoch(epoch: unknown) {
-  const owner = (await browser.storage.local.get(VA_CACHE_OWNER_KEY))[VA_CACHE_OWNER_KEY] as { epoch?: string } | undefined
-  return typeof epoch === 'string' && owner?.epoch === epoch
+  if (typeof epoch !== 'string') return false
+  const owner = await readVaVaultRecord<CacheOwner>(VA_CACHE_OWNER_KEY).catch(() => undefined)
+  return owner?.epoch === epoch
 }
 
 export function establishVaCacheOwner(accountId: string): Promise<string | null> {
-  const next = writes.then(async () => {
-    if (!await hasLocalDataConsent() || !/^[a-z0-9-]{8,100}$/i.test(accountId)) return null
-    const stored = await browser.storage.local.get([VA_CACHE_OWNER_KEY, CACHE_KEY])
-    const owner = stored[VA_CACHE_OWNER_KEY] as { accountId?: string, epoch?: string } | undefined
+  const next = writes.then(() => withVaVaultLock(async () => {
+    if (!await hasLocalDataConsent() || !/^[a-z0-9-]{8,100}$/i.test(accountId)
+      || await readVaVaultStatus() !== 'unlocked') return null
+    const owner = await readVaVaultRecord<CacheOwner>(VA_CACHE_OWNER_KEY)
     if (owner?.accountId === accountId && typeof owner.epoch === 'string') return owner.epoch
+    const stored = await browser.storage.local.get(null)
     if (owner || stored[CACHE_KEY]) await revokeCloudConsent()
+    const receipts = Object.keys(stored).filter(name => name.startsWith('vch-va-letter-status:') || name.startsWith('vch-va-profile-sync:'))
     await browser.storage.local.remove(CACHE_KEY)
+    await browser.storage.local.remove(receipts)
     const epoch = crypto.randomUUID()
-    await browser.storage.local.set({ [VA_CACHE_OWNER_KEY]: { accountId, epoch } })
-    return epoch
-  }).catch(() => null)
+    return await writeVaVaultRecord(VA_CACHE_OWNER_KEY, { accountId, epoch }) ? epoch : null
+  })).catch(() => null)
   writes = next
   return next
 }
 
 /** All contexts send mutations here in the worker, preventing lost concurrent writes. */
 export function applyVaCacheMutation(mutation: CacheMutation): Promise<boolean> {
-  const next = writes.then(async () => {
+  const next = writes.then(() => withVaVaultLock(async () => {
     if (!await hasLocalDataConsent() || !await checkVaCacheEpoch(mutation.ownerEpoch)) return false
     const current = await storageGet()
     const { field, value } = mutation
@@ -187,8 +204,8 @@ export function applyVaCacheMutation(mutation: CacheMutation): Promise<boolean> 
     } else return false
     // Re-check immediately before writing in case the user revoked access during a read.
     if (!await hasLocalDataConsent()) return false
-    return storageSet({ ...current, ...patch, lastSyncedAt: field === 'letters' ? current.lastSyncedAt : new Date().toISOString() })
-  }).catch(() => false)
+    return writeVaVaultRecord(CACHE_KEY, { ...current, ...patch, lastSyncedAt: field === 'letters' ? current.lastSyncedAt : new Date().toISOString() })
+  })).catch(() => false)
   writes = next
   return next
 }
@@ -220,19 +237,23 @@ export function formatLastSynced(value: string | null | undefined) {
 }
 
 export function subscribeVaDeviceCache(listener: (cache: VaDeviceCache) => void) {
+  let request = 0
   const handler = (
     changes: Record<string, Browser.storage.StorageChange>,
     areaName: string
   ) => {
     if (areaName !== 'local') return
-    const change = changes[CACHE_KEY]
-    if (!change) return
-    listener(parseVaDeviceCacheRecord(change.newValue))
+    if (!changes[CACHE_KEY] && !changes[VA_CACHE_OWNER_KEY]) return
+    const current = ++request
+    void readVaDeviceCache().then(cache => { if (request === current) listener(cache) })
   }
 
   if (!browser.storage?.onChanged?.addListener) return () => undefined
   browser.storage.onChanged.addListener(handler)
-  return () => browser.storage.onChanged.removeListener(handler)
+  return () => {
+    request++
+    browser.storage.onChanged.removeListener(handler)
+  }
 }
 
 export const FRESH_DEVICE_SYNC_MS = 15 * 60 * 1000

@@ -1,4 +1,5 @@
 import { readHubAccessToken } from './hubSessionRead'
+import { withVaVaultLock } from './vaLocalVault'
 
 export const PRIVACY_CONSENT_KEY = 'vch-privacy-consent-v1'
 export const HUB_BOOKMARK_CACHE_KEY = 'vch-hub-bookmarks-v1'
@@ -131,11 +132,11 @@ export function revokeCloudConsent() {
 }
 
 export function clearVaDataAndConsent() {
-  return withConsentWrite(async () => {
+  return withVaVaultLock(() => withConsentWrite(async () => {
     // Revoke before removing data so an in-flight refresh cannot silently refill the cache.
     await browser.storage.local.remove(PRIVACY_CONSENT_KEY)
     const stored = await browser.storage.local.get(null)
     await browser.storage.local.remove(Object.keys(stored).filter(key => key.startsWith('vch-va-') || key === HUB_BOOKMARK_CACHE_KEY))
     await browser.storage.session?.clear()
-  })
+  }))
 }

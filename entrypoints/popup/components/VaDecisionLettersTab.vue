@@ -4,7 +4,7 @@ import { requestVaDecisionLetterRefresh } from '@/shared/vaDecisionLetterSync'
 import { cacheImportedDecisionLetterKeys, fetchImportedDecisionLetterKeys, readImportedDecisionLetterKeys } from '@/shared/decisionLetterImport'
 import type { LetterImportOutcome } from '@/shared/vaProfileImport'
 import { VA_CLAIM_LETTERS_PAGE } from '@/shared/vaEndpoints'
-import { checkVaCacheEpoch, formatLastSynced, isRecentVaDeviceSync, readVaDeviceCache, VA_CACHE_OWNER_KEY, VA_DEVICE_CACHE_STORAGE_KEY, type VaDeviceCache } from '@/shared/vaDeviceCache'
+import { checkVaCacheEpoch, formatLastSynced, isRecentVaDeviceSync, readVaDeviceCache, subscribeVaDeviceCache, VA_CACHE_OWNER_KEY, type VaDeviceCache } from '@/shared/vaDeviceCache'
 
 const props = defineProps<{ active: boolean, busy: boolean, accountId: string | null, importedLetterKeys: string[] }>()
 defineEmits<{ import: [] }>()
@@ -123,27 +123,24 @@ async function load(automatic = false) {
 }
 
 onMounted(() => {
+  const stop = subscribeVaDeviceCache(({ letters: next }) => {
+    if (next && next.fetchedAt !== fetchedAt.value) applySavedLetters(next)
+  })
   const onCacheChanged = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
-    if (area !== 'local') return
-    const cache = changes[VA_DEVICE_CACHE_STORAGE_KEY]
-    if (changes[VA_CACHE_OWNER_KEY] || (cache && !cache.newValue)) {
-      letters.value = []
-      selected.value = []
-      outcomes.value = {}
-      loaded.value = false
-      fetchedAt.value = null
-      cacheWriteFailed.value = false
-      error.value = ''
-      return
-    }
-    const next = (cache?.newValue as VaDeviceCache | undefined)?.letters
-    const previous = (cache?.oldValue as VaDeviceCache | undefined)?.letters
-    if (next && next.fetchedAt !== previous?.fetchedAt) {
-      applySavedLetters(next)
-    }
+    if (area !== 'local' || !changes[VA_CACHE_OWNER_KEY]) return
+    letters.value = []
+    selected.value = []
+    outcomes.value = {}
+    loaded.value = false
+    fetchedAt.value = null
+    cacheWriteFailed.value = false
+    error.value = ''
   }
   browser.storage.onChanged.addListener(onCacheChanged)
-  onUnmounted(() => browser.storage.onChanged.removeListener(onCacheChanged))
+  onUnmounted(() => {
+    stop()
+    browser.storage.onChanged.removeListener(onCacheChanged)
+  })
 })
 
 watch(() => props.active, (active) => {

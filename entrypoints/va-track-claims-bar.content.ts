@@ -1,6 +1,6 @@
 import hubLogo from '../public/icon-48.png?inline'
 import { hasLocalDataConsent } from '@/shared/privacyConsent'
-import { formatLastSynced, readVaCacheMeta } from '@/shared/vaDeviceCache'
+import { formatLastSynced, requestVaCachePageSummary } from '@/shared/vaDeviceCache'
 import {
   EXTENSION_CONTEXT_INVALIDATED_MESSAGE,
   isExtensionContextValid,
@@ -202,9 +202,15 @@ export default defineContentScript({
         return
       }
 
-      const meta = await readVaCacheMeta()
-      const synced = formatLastSynced(meta.lastSyncedAt)
-      if (meta.hasClaims) {
+      const meta = await requestVaCachePageSummary()
+      if (meta && !meta.unlocked && await hasLocalDataConsent()) {
+        subtitleEl.textContent = 'Unlock VA data in the VCH extension'
+        subtitleEl.className = 'subtitle status-warn'
+        detailEl.textContent = 'Open the extension and enter your passphrase to use saved claims or sync.'
+        return
+      }
+      const synced = formatLastSynced(meta?.lastSyncedAt)
+      if (meta?.count) {
         subtitleEl.textContent = synced
           ? `Claims saved on this device · Last synced ${synced}`
           : 'Claims saved on this device'

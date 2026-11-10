@@ -7,7 +7,7 @@ import { parseVaRatingsResponse, sortRatingsByPercent, type ParsedVaRating } fro
 import type { ParsedVaUserProfileForImport } from '@/shared/vaUserProfileParse'
 import { refreshVaProfileForImport } from '@/shared/vaUserProfileFetch'
 import { buildVaImportPreviewItems } from '@/shared/vaImportPreview'
-import { checkVaCacheEpoch, isRecentVaDeviceSync, readVaDeviceCache, saveVaRatingsCache, VA_CACHE_OWNER_KEY, VA_DEVICE_CACHE_STORAGE_KEY, type VaDeviceCache } from '@/shared/vaDeviceCache'
+import { checkVaCacheEpoch, isRecentVaDeviceSync, readVaDeviceCache, saveVaRatingsCache, subscribeVaDeviceCache, VA_CACHE_OWNER_KEY, type VaDeviceCache } from '@/shared/vaDeviceCache'
 import { assessRatingsAvailability, type RatingsAvailability } from '@/shared/ratingsAvailability'
 import { RATINGS_LOCK_CREDENTIAL_KEY } from '@/shared/ratingsPasskeyLock'
 import { useRatingsPasskeyLock } from '../composables/useRatingsPasskeyLock'
@@ -257,28 +257,28 @@ watch([ratingsVisible, canUsePasskeyGate, () => props.active], async ([visible, 
 })
 
 onMounted(async () => {
+  const stop = subscribeVaDeviceCache((cache) => {
+    if (!cache.ratings || cache.ratings.fetchedAt === lastSyncedAt.value) return
+    ratingsGate.value = { available: true, source: 'cache' }
+    if (ratingsVisible.value) {
+      applyRatings(cache.ratings, cache.lastSyncedAt)
+      isStale.value = false
+    }
+  })
   const onStorage = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
     if (area !== 'local') return
     const credential = changes[RATINGS_LOCK_CREDENTIAL_KEY]
     if (credential) syncCredential(credential.newValue)
-    const change = changes[VA_DEVICE_CACHE_STORAGE_KEY]
-    if (changes[VA_CACHE_OWNER_KEY] || (change && !change.newValue)) {
+    if (changes[VA_CACHE_OWNER_KEY]) {
       lockRatings()
       if (!gateChecking.value) void refreshRatingsGate()
-      return
-    }
-    const cache = change?.newValue as VaDeviceCache | undefined
-    const previous = change?.oldValue as VaDeviceCache | undefined
-    if (cache?.ratings && cache.ratings.fetchedAt !== previous?.ratings?.fetchedAt) {
-      ratingsGate.value = { available: true, source: 'cache' }
-      if (ratingsVisible.value) {
-        applyRatings(cache.ratings, cache.lastSyncedAt)
-        isStale.value = false
-      }
     }
   }
   browser.storage.onChanged.addListener(onStorage)
-  onUnmounted(() => browser.storage.onChanged.removeListener(onStorage))
+  onUnmounted(() => {
+    stop()
+    browser.storage.onChanged.removeListener(onStorage)
+  })
   const [settings] = await Promise.all([
     browser.storage.local.get(PASSKEY_SETUP_DISMISSED_KEY).catch(() => ({} as Record<string, unknown>)),
     init(),

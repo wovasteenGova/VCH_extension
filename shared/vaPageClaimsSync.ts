@@ -5,7 +5,7 @@ import { unwrapVaList } from './vaClient'
 import { VA_ENDPOINTS } from './vaEndpoints'
 import { parseVaRatingsResponse } from './vaRatingParse'
 import {
-  readVaDeviceCache,
+  requestVaCachePageSummary,
   saveVaAppealsCache,
   saveVaClaimsCache,
   saveVaLettersCache,
@@ -25,6 +25,10 @@ export type VaPageClaimsSyncResult = {
 
 /** The VA.gov Sync button also warms the local ratings and letter list. */
 export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
+  const summary = await requestVaCachePageSummary()
+  if (!summary?.unlocked) {
+    return { ok: false, count: 0, appeals: 0, files: 0, error: 'Unlock your saved VA data in the extension before syncing.' }
+  }
   void fetchVaJsonInPage(VA_ENDPOINTS.ratedDisabilities).then(result => {
     if (!result.ok || !result.ownerEpoch) return
     const ratings = parseVaRatingsResponse(result.data)
@@ -63,11 +67,11 @@ export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
   await lettersSync
   if (savedClaims || savedAppeals) {
     await touchVaCacheSync()
-    const cache = await readVaDeviceCache()
+    const cache = await requestVaCachePageSummary()
     return {
       ok: true,
-      count: cache.claims.length,
-      appeals: cache.appeals.length,
+      count: cache?.count ?? 0,
+      appeals: cache?.appeals ?? 0,
       files: 0
     }
   }

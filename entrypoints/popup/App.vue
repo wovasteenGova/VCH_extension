@@ -3,6 +3,7 @@ import { EXTENSION_VERSION } from '@/shared/version'
 import VaClaimTrackerTab from './components/VaClaimTrackerTab.vue'
 import PrivacySettings from './components/PrivacySettings.vue'
 import VaProfileTab from './components/VaProfileTab.vue'
+import VaCacheUnlock from './components/VaCacheUnlock.vue'
 import { hasLocalDataConsent, hasVaProfileCloudApproval, PRIVACY_CONSENT_KEY } from '@/shared/privacyConsent'
 import { readHubSession } from '@/shared/hubSessionRead'
 import { readVaTrackBridgeCachePayload } from '@/shared/vaTrackBridgeCache'
@@ -14,10 +15,13 @@ import ConnectionStatusBar from './components/ConnectionStatusBar.vue'
 import PopupUiScaleControl from './components/PopupUiScaleControl.vue'
 import PopupThemeToggle from './components/PopupThemeToggle.vue'
 import PopupExpandControl from './components/PopupExpandControl.vue'
+import { readVaVaultStatus, VA_VAULT_CONFIG_KEY, VA_VAULT_SESSION_KEY, type VaVaultStatus } from '@/shared/vaLocalVault'
 
 const activeTab = ref('profile')
 const privacyReady = ref(false)
 const localConsent = ref(false)
+const vaultStatus = ref<VaVaultStatus | null>(null)
+const vaReady = computed(() => localConsent.value && vaultStatus.value === 'unlocked')
 const privacyOpen = ref(false)
 const savingProfile = ref(false)
 const tracking = ref(false)
@@ -57,21 +61,33 @@ async function trackOnVch() {
   }
 }
 
+let storageRequest = 0
 async function refreshConsent() {
-  localConsent.value = await hasLocalDataConsent()
+  const request = ++storageRequest
+  const consent = await hasLocalDataConsent()
+  const status = consent ? await readVaVaultStatus().catch(() => null) : null
+  if (request !== storageRequest) return
+  localConsent.value = consent
+  vaultStatus.value = status
   privacyReady.value = true
 }
 onMounted(() => {
   void refreshConsent()
   void browser.runtime.sendMessage({ type: 'VCH_SYNC_APPROVED_VA_TRACK' }).catch(() => undefined)
-  const onChanged = (changes: Record<string, unknown>, area: string) => {
-    if (area === 'local' && PRIVACY_CONSENT_KEY in changes) void refreshConsent()
+  const onChanged = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
+    if (area === 'session' && changes[VA_VAULT_SESSION_KEY] && !changes[VA_VAULT_SESSION_KEY].newValue) {
+      vaultStatus.value = 'locked'
+    }
+    if ((area === 'local' && (PRIVACY_CONSENT_KEY in changes || VA_VAULT_CONFIG_KEY in changes))
+      || (area === 'session' && VA_VAULT_SESSION_KEY in changes)) void refreshConsent()
   }
   browser.storage.onChanged.addListener(onChanged)
   onUnmounted(() => browser.storage.onChanged.removeListener(onChanged))
 })
-function acceptedPrivacy() { localConsent.value = true; privacyOpen.value = false }
-function clearedPrivacy() { localConsent.value = false; privacyOpen.value = false }
+function closePrivacy() {
+  privacyOpen.value = false
+  void refreshConsent()
+}
 
 const footerLinkPanelOpen = ref(false)
 
@@ -126,7 +142,7 @@ const tabs = [
               <PopupUiScaleControl />
             </div>
           </div>
-          <ConnectionStatusBar v-if="localConsent" />
+          <ConnectionStatusBar v-if="vaReady" />
         </header>
 
         <UTabs
@@ -152,9 +168,25 @@ const tabs = [
         </Transition>
         <div class="popup-tab-scroll custom-scrollbar relative z-0 h-full min-h-0 overflow-y-auto overscroll-contain">
           <p v-if="!privacyReady" role="status" class="py-4 text-sm text-muted">Loading your privacy preferences…</p>
-          <PrivacySettings v-else-if="!localConsent || privacyOpen" :accepted="localConsent" :clear-disabled="savingVaData" @accepted="acceptedPrivacy" @cleared="clearedPrivacy" @close="privacyOpen = false" />
+          <PrivacySettings
+            v-else-if="!localConsent || privacyOpen"
+            :accepted="localConsent"
+            :vault-unlocked="vaReady"
+            :clear-disabled="savingVaData"
+            @accepted="closePrivacy"
+            @cleared="closePrivacy"
+            @close="closePrivacy"
+            @locked="closePrivacy"
+          />
+          <VaCacheUnlock
+            v-else-if="activeTab !== 'hub' && (vaultStatus === 'setup' || vaultStatus === 'locked')"
+            :setup="vaultStatus === 'setup'"
+            @unlocked="refreshConsent"
+            @privacy="privacyOpen = true"
+          />
+          <p v-else-if="activeTab !== 'hub' && !vaultStatus" role="alert" class="py-4 text-sm text-error">Could not access saved VA data. Reopen the extension and try again.</p>
           <VaProfileTab
-            v-if="privacyReady && localConsent"
+            v-if="vaReady"
             v-show="activeTab === 'profile' && !privacyOpen"
             :active="activeTab === 'profile' && !privacyOpen"
             :tracking="tracking"
@@ -163,7 +195,7 @@ const tabs = [
             @saving="savingProfile = $event"
             @track="openTracker"
           />
-          <VaClaimTrackerTab v-if="localConsent && !privacyOpen && activeTab === 'claims'" :tracking="savingVaData" @track="trackOnVch" />
+          <VaClaimTrackerTab v-if="vaReady && !privacyOpen && activeTab === 'claims'" :tracking="savingVaData" @track="trackOnVch" />
           <HubTab v-if="localConsent && !privacyOpen && activeTab === 'hub'" />
         </div>
       </div>

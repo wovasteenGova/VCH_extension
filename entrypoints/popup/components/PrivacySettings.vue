@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { acceptLocalDataAccess, clearVaDataAndConsent } from '@/shared/privacyConsent'
+import { lockVaVault } from '@/shared/vaLocalVault'
 
-const props = defineProps<{ accepted: boolean, clearDisabled?: boolean }>()
-const emit = defineEmits<{ accepted: [], cleared: [], close: [] }>()
+const props = defineProps<{ accepted: boolean, clearDisabled?: boolean, vaultUnlocked?: boolean }>()
+const emit = defineEmits<{ accepted: [], cleared: [], close: [], locked: [] }>()
 const localApproval = ref(false)
 const busy = ref(false)
 const error = ref('')
@@ -23,6 +24,19 @@ async function clear() {
   catch { error.value = 'Could not clear all data. Try again.'; toast.add({ title: 'Could not clear VA data', description: error.value, color: 'error' }) }
   finally { busy.value = false }
 }
+
+async function lock() {
+  if (busy.value || props.clearDisabled) return
+  busy.value = true
+  try {
+    await lockVaVault()
+    emit('locked')
+  } catch {
+    error.value = 'Could not lock saved VA data. Try again.'
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -32,7 +46,7 @@ async function clear() {
       <UButton v-if="accepted" aria-label="Close privacy settings" icon="i-lucide-x" variant="ghost" color="error" @click="emit('close')" />
     </div>
     <p>With your permission, VCH reads claims, appeals, disability ratings, and profile details from your existing VA.gov session. Opening Letters checks which decision letters are available. Profile details can include your name, birth date, phone, service history, and the last four digits of your SSN.</p>
-    <p>These details are saved in this browser so you can view them later. They are sensitive and are not encrypted by the extension. Use a private browser profile on a device you trust.</p>
+    <p>Your cache passphrase encrypts VA records saved in this browser. Unlock them to view or sync VA data. The cache locks when you restart the browser or choose Lock saved VA data.</p>
     <p>Your VA password and VA session cookies are never sent to VCH. Optional imports use your VCH sign-in to authenticate requests to your account. With sync approval and auto-sync enabled, claims and appeals sync when they change. Ratings and selected PDFs are saved when you choose Save.</p>
     <template v-if="!accepted">
       <UCheckbox v-model="localApproval" label="Allow VCH to read my signed-in VA.gov data and save it on this device." />
@@ -40,6 +54,7 @@ async function clear() {
     </template>
     <template v-else>
       <p>Manage your VCH account’s sync approval and auto-sync in VA Profile under Sync Approved.</p>
+      <UButton v-if="vaultUnlocked" color="neutral" variant="outline" icon="i-lucide-lock" :disabled="busy || clearDisabled" @click="lock">Lock saved VA data</UButton>
       <UButton color="error" variant="outline" :loading="busy" :disabled="clearDisabled" @click="clear">Clear local VA data and revoke access</UButton>
       <p class="text-xs text-muted">Clearing here removes cached VA data and permissions from this extension. Delete imported documents and cloud data separately in your VCH account. Theme and display preferences are preserved.</p>
     </template>

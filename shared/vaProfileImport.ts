@@ -5,6 +5,7 @@ import { readVaTrackBridgeCachePayload, type VaTrackBridgeCachePayload } from '.
 import { importVaRatingsToClaimBuilder, type ClaimBuilderVaImportPayload } from './claimBuilderVaImport'
 import { sendDecisionLetterToVch } from './decisionLetterImport'
 import { decisionLetterKey, type VaLetterIndexRow } from './vaClaimLetters'
+import { readVaVaultRecord, withVaVaultLock, writeVaVaultRecord } from './vaLocalVault'
 
 export type LetterImportOutcome = { row: VaLetterIndexRow, ok: boolean, message: string }
 export type VaProfileImportResult = {
@@ -22,7 +23,7 @@ type VaProfileSyncState = { lastSyncedAt?: string, trackFingerprint?: string, im
 
 export async function readVaProfileSyncState(accountId: string): Promise<VaProfileSyncState> {
   const key = VA_PROFILE_SYNC_STATE_PREFIX + accountId
-  return (await browser.storage.local.get(key))[key] as VaProfileSyncState | undefined ?? {}
+  return await readVaVaultRecord<VaProfileSyncState>(key).catch(() => undefined) ?? {}
 }
 
 async function trackFingerprint(track: VaTrackBridgeCachePayload) {
@@ -116,13 +117,15 @@ async function saveApprovedVaData(
   }
   if (result.track || result.ratingsSaved || result.lettersSaved > 0) {
     // A revoked or replaced approval must not receive an in-flight receipt.
-    const current = await readVaProfileCloudApproval(input.accountId)
-    if (current?.acceptedAt === approval.acceptedAt) {
-      if (result.lettersSaved) syncState.importedLetterKeys = [...importedLetterKeys]
-      await browser.storage.local.set({
-        [VA_PROFILE_SYNC_STATE_PREFIX + input.accountId]: { ...syncState, lastSyncedAt: new Date().toISOString() }
-      }).catch(() => undefined)
-    }
+    await withVaVaultLock(async () => {
+      const current = await readVaProfileCloudApproval(input.accountId!)
+      if (current?.acceptedAt === approval.acceptedAt) {
+        if (result.lettersSaved) syncState.importedLetterKeys = [...importedLetterKeys]
+        await writeVaVaultRecord(VA_PROFILE_SYNC_STATE_PREFIX + input.accountId, {
+          ...syncState, lastSyncedAt: new Date().toISOString()
+        })
+      }
+    }).catch(() => undefined)
   }
   return result
 }
