@@ -19,21 +19,25 @@ export const VA_REQUEST_TIMEOUT_MS = 30_000
 export const MAX_VA_PDF_BYTES = 12 * 1024 * 1024
 const MAX_JSON_BYTES = 4 * 1024 * 1024
 export type VaRawResponse = { ok: boolean, status: number, text?: string, base64?: string, contentType?: string | null, error?: string, ownerEpoch?: string }
+type VaAccountStore = {
+  establishOwner: (accountId: string) => Promise<string | null>
+  checkEpoch: (epoch: string) => Promise<boolean>
+}
 
 export function isPdfBytes(bytes: Uint8Array) {
   return new TextDecoder('ascii').decode(bytes.subarray(0, 1024)).includes('%PDF-')
 }
 
-export async function requestVa(url: string, binary = false): Promise<VaRawResponse> {
+export async function requestVa(url: string, binary = false, accountStore?: VaAccountStore): Promise<VaRawResponse> {
   if (!isAllowedVaRequest(url, 'GET', binary)) return { ok: false, status: 0, error: 'This VA request is not allowed.' }
   const isUser = new URL(url).pathname === '/v0/user'
-  const identity = isUser ? null : await verifyVaAccount(() => requestVa('https://api.va.gov/v0/user'))
+  const identity = isUser ? null : await verifyVaAccount(() => requestVa('https://api.va.gov/v0/user', false, accountStore))
   if (!isUser && !identity) return { ok: false, status: 0, error: 'Could not verify your VA.gov account. Sign in on VA.gov, then try again.' }
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), VA_REQUEST_TIMEOUT_MS)
   try {
     const response = await fetch(url, {
-      method: 'GET', credentials: 'include', redirect: 'error', signal: controller.signal,
+      method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error', signal: controller.signal,
       headers: { Accept: binary ? 'application/pdf,application/octet-stream' : 'application/json', 'X-Key-Inflection': 'camel' }
     })
     const limit = binary ? MAX_VA_PDF_BYTES : MAX_JSON_BYTES
@@ -54,12 +58,13 @@ export async function requestVa(url: string, binary = false): Promise<VaRawRespo
     const bytes = new Uint8Array(size)
     let offset = 0
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length }
-    if (identity && !await isCurrentVaEpoch(identity.epoch)) throw new Error('Your VA.gov account changed. Refresh before continuing.')
+    const checkEpoch = accountStore?.checkEpoch ?? isCurrentVaEpoch
+    if (identity && !await checkEpoch(identity.epoch)) throw new Error('Your VA.gov account changed. Refresh before continuing.')
     if (!binary) {
       const text = new TextDecoder().decode(bytes)
       let ownerEpoch = identity?.epoch
       if (isUser && response.ok) {
-        const registered = await registerVaAccount(JSON.parse(text))
+        const registered = await registerVaAccount(JSON.parse(text), accountStore?.establishOwner)
         if (!registered) throw new Error('Could not verify your VA.gov account. Refresh VA.gov and try again.')
         ownerEpoch = registered.epoch
       }

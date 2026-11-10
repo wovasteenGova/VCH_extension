@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { decisionLetterKey as key, fetchVaDecisionLetterIndex, type VaLetterIndexRow } from '@/shared/vaClaimLetters'
+import { decisionLetterKey as key, REFRESH_VA_DECISION_LETTERS, type VaDecisionLetterRefreshResult, type VaLetterIndexRow } from '@/shared/vaClaimLetters'
 import { cacheImportedDecisionLetterKeys, fetchImportedDecisionLetterKeys, readImportedDecisionLetterKeys } from '@/shared/decisionLetterImport'
 import type { LetterImportOutcome } from '@/shared/vaProfileImport'
 import { VA_CLAIM_LETTERS_PAGE } from '@/shared/vaEndpoints'
-import { checkVaCacheEpoch, isRecentVaDeviceSync, readVaDeviceCache, saveVaLettersCache, VA_CACHE_OWNER_KEY, VA_DEVICE_CACHE_STORAGE_KEY, type VaDeviceCache } from '@/shared/vaDeviceCache'
+import { checkVaCacheEpoch, formatLastSynced, isRecentVaDeviceSync, readVaDeviceCache, VA_CACHE_OWNER_KEY, VA_DEVICE_CACHE_STORAGE_KEY, type VaDeviceCache } from '@/shared/vaDeviceCache'
 
 const props = defineProps<{ active: boolean, busy: boolean, accountId: string | null, importedLetterKeys: string[] }>()
 defineEmits<{ import: [] }>()
@@ -13,7 +13,8 @@ const loading = ref(false)
 const manualRefresh = ref(false)
 const loaded = ref(false)
 const fetchedAt = ref<string | null>(null)
-const listSource = ref<'live' | 'saved' | 'live-only'>('live')
+const cacheWriteFailed = ref(false)
+const lastSyncedLabel = computed(() => formatLastSynced(fetchedAt.value))
 const error = ref('')
 const outcomes = ref<Record<string, { ok: boolean, message: string }>>({})
 const accountImportedKeys = ref<string[]>([])
@@ -75,7 +76,7 @@ function applyLetters(rows: VaLetterIndexRow[]) {
 function applySavedLetters(saved: NonNullable<VaDeviceCache['letters']>) {
   applyLetters(saved.rows)
   fetchedAt.value = saved.fetchedAt
-  listSource.value = isRecentVaDeviceSync(saved.fetchedAt) ? 'live' : 'saved'
+  cacheWriteFailed.value = false
 }
 
 async function load(automatic = false) {
@@ -90,23 +91,28 @@ async function load(automatic = false) {
       if (saved && !loaded.value) applySavedLetters(saved)
     }
     if (automatic && isRecentVaDeviceSync(fetchedAt.value)) return
-    const { rows: next, ownerEpoch } = await fetchVaDecisionLetterIndex()
     const previousKeys = new Set(letters.value.map(key))
-    const saved = ownerEpoch ? await saveVaLettersCache(next, ownerEpoch) : false
-    if (ownerEpoch && !await checkVaCacheEpoch(ownerEpoch)) {
+    const result: VaDecisionLetterRefreshResult | undefined = await browser.runtime.sendMessage({ type: REFRESH_VA_DECISION_LETTERS })
+    if (!result?.ok) throw new Error(result?.error || 'Could not refresh VA decision letters.')
+    const { rows: next, ownerEpoch, saved } = result
+    if (!await checkVaCacheEpoch(ownerEpoch)) {
       throw new Error('Your VA.gov account changed. Refresh the letter list and try again.')
     }
     applyLetters(next)
-    fetchedAt.value = new Date().toISOString()
-    listSource.value = saved ? 'live' : 'live-only'
-    if (next.length && (!automatic || next.some(row => !previousKeys.has(key(row))))) {
-      toast.add({ title: `${next.length} decision letter${next.length === 1 ? '' : 's'} available`, description: 'Select the letters you want to save to your VCH account.', color: 'success' })
+    fetchedAt.value = saved ? new Date().toISOString() : null
+    cacheWriteFailed.value = !saved
+    if (!automatic || next.some(row => !previousKeys.has(key(row)))) {
+      const title = saved
+        ? `${next.length} decision letter${next.length === 1 ? '' : 's'} saved on this device`
+        : 'Decision letter list refreshed'
+      toast.add({ title, color: 'success' })
     }
   } catch (caught) {
-    if (loaded.value) {
-      if (listSource.value !== 'live-only' && !isRecentVaDeviceSync(fetchedAt.value)) listSource.value = 'saved'
-      return
+    if (!loaded.value) {
+      const saved = (await readVaDeviceCache()).letters
+      if (saved && !loaded.value) applySavedLetters(saved)
     }
+    if (loaded.value) return
     error.value = caught instanceof Error ? caught.message : 'Could not read VA decision letters.'
     if (!automatic) toast.add({ title: 'Could not find decision letters', description: error.value, color: 'error' })
   } finally {
@@ -125,7 +131,7 @@ onMounted(() => {
       outcomes.value = {}
       loaded.value = false
       fetchedAt.value = null
-      listSource.value = 'live'
+      cacheWriteFailed.value = false
       error.value = ''
       return
     }
@@ -193,8 +199,8 @@ defineExpose({ selectedLetters, recordOutcome })
     <p v-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
     <p v-if="waitingForImportStatus" role="status" class="text-sm text-muted">Checking your VCH library…</p>
     <p v-else-if="statusUnavailable" class="text-sm text-muted">Could not check your VCH library. Refresh letters to try again.</p>
-    <p v-if="listSource === 'saved'" class="text-sm text-muted">Showing the saved letter list. Importing a PDF requires an active VA.gov session.</p>
-    <p v-else-if="listSource === 'live-only'" class="text-sm text-muted">You can import these letters now. The list could not be saved for offline use.</p>
+    <p v-if="lastSyncedLabel" class="text-xs text-muted">Last Synced · {{ lastSyncedLabel }}</p>
+    <p v-else-if="cacheWriteFailed" class="text-sm text-muted">You can import these letters now. The list could not be saved for offline use.</p>
     <p v-if="loaded && !letters.length" class="text-sm text-muted">No decision letters in this list. If you expect a letter, check the claim letters page on VA.gov.</p>
     <div v-if="selectableLetters.length" class="flex flex-wrap items-center justify-between gap-2">
       <UCheckbox :model-value="selectAllState" :disabled="busy || waitingForImportStatus" :label="selectAllLabel" :aria-label="selectAllLabel" @update:model-value="toggleAll" />

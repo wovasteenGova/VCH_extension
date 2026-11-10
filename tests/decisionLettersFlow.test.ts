@@ -39,6 +39,13 @@ describe('VA decision-letter discovery and import', () => {
     await expect(listVaDecisionLetters()).rejects.toThrow('Sign in')
   })
 
+  it('accepts an explicit empty list and rejects a successful HTTP response with a VA error', async () => {
+    vi.mocked(vaFetch).mockResolvedValueOnce({ ok: true, status: 200, data: { data: [] } })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: { data: [], errors: [{ title: 'Session expired' }] } })
+    await expect(listVaDecisionLetters()).resolves.toEqual([])
+    await expect(listVaDecisionLetters()).rejects.toThrow('valid decision letter list')
+  })
+
   it('does not combine pages from different VA accounts', async () => {
     vi.mocked(vaFetch).mockResolvedValueOnce({ ok: true, status: 200, ownerEpoch: 'a', data: { data: [entry('one', 184)], meta: { pagination: { totalPages: 2 } } } })
       .mockResolvedValueOnce({ ok: true, status: 200, ownerEpoch: 'b', data: { data: [entry('two', 27)] } })

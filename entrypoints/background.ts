@@ -11,8 +11,27 @@ import { probeVaSession } from '@/shared/connectionStatus'
 import { readVaTrackBridgeCachePayload } from '@/shared/vaTrackBridgeCache'
 import { autoSyncApprovedVaClaims } from '@/shared/vaProfileImport'
 import { hubUrl, VCH_EXTENSION_HUB_PATH } from '@/shared/urls'
+import { fetchVaDecisionLetterIndex, REFRESH_VA_DECISION_LETTERS, type VaDecisionLetterRefreshResult } from '@/shared/vaClaimLetters'
+import { vaFetch } from '@/shared/vaClient'
+import { requestVa } from '@/shared/vaRequest'
 
 export default defineBackground(() => {
+  let letterRefresh: Promise<VaDecisionLetterRefreshResult> | undefined
+  async function refreshDecisionLetters(): Promise<VaDecisionLetterRefreshResult> {
+    const accountStore = { establishOwner: establishVaCacheOwner, checkEpoch: checkVaCacheEpoch }
+    try {
+      const { rows, ownerEpoch } = await fetchVaDecisionLetterIndex(url => vaFetch(url, address => requestVa(address, false, accountStore)))
+      if (!ownerEpoch) return { ok: false, error: 'Sign in to VA.gov to save your decision letter list.' }
+      const saved = await applyVaCacheMutation({ field: 'letters', value: rows, ownerEpoch })
+      if (!await hasLocalDataConsent() || !await checkVaCacheEpoch(ownerEpoch)) {
+        return { ok: false, error: 'Your VA.gov access changed. Refresh the letter list and try again.' }
+      }
+      return { ok: true, rows, ownerEpoch, saved }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Could not read VA decision letters.' }
+    }
+  }
+
   let syncTimer: ReturnType<typeof setTimeout> | undefined
   function scheduleApprovedClaimSync() {
     clearTimeout(syncTimer)
@@ -41,6 +60,13 @@ export default defineBackground(() => {
     const ownPage = sender.url?.startsWith(browser.runtime.getURL('/')) === true
     const vaPage = ['https://va.gov', 'https://www.va.gov'].includes(origin)
     const bridgePage = isClaimBuilderBridgeOrigin(origin) && sender.frameId === 0
+    if (message?.type === REFRESH_VA_DECISION_LETTERS) {
+      if (!ownPage) return
+      // The popup can close while VA is responding. Keep the request and save here.
+      letterRefresh ??= refreshDecisionLetters().finally(() => { letterRefresh = undefined })
+      void letterRefresh.then(sendResponse)
+      return true
+    }
     if (message?.type === 'VCH_SYNC_APPROVED_VA_TRACK') {
       if (!ownPage) return
       scheduleApprovedClaimSync()

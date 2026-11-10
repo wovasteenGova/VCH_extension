@@ -13,6 +13,7 @@ defineEmits<{
 }>()
 
 const fresh = ref(false)
+const lastSyncedLabel = computed(() => formatLastSynced(props.lastSyncedAt))
 watch(() => props.lastSyncedAt, (value, _, onCleanup) => {
   fresh.value = isRecentVaDeviceSync(value)
   if (!fresh.value || !value) return
@@ -23,34 +24,16 @@ watch(() => props.lastSyncedAt, (value, _, onCleanup) => {
 </script>
 
 <template>
-  <UAlert
-    v-if="liveSession"
-    color="neutral"
-    variant="soft"
-    icon="i-lucide-hard-drive"
-    title="Showing saved VA data"
-    :description="formatLastSynced(lastSyncedAt)
-      ? `Last saved on this device ${formatLastSynced(lastSyncedAt)}. Use refresh if you want to pull again.`
-      : 'Showing data saved on this device.'"
-  />
-  <UAlert
-    v-else-if="!fresh"
-    color="warning"
-    variant="soft"
-    icon="i-lucide-cloud-off"
-    title="Not up to date"
-    :description="formatLastSynced(lastSyncedAt)
-      ? `Showing data saved on this device (last synced ${formatLastSynced(lastSyncedAt)}). Sign in at VA.gov to refresh.`
-      : 'Showing data saved on this device. Sign in at VA.gov to refresh.'"
-  >
-    <template #actions>
-      <UButton
-        size="sm"
-        color="neutral"
-        variant="outline"
-        label="Sign in to VA.gov"
-        @click="$emit('signIn')"
-      />
-    </template>
-  </UAlert>
+  <div v-if="liveSession ? lastSyncedLabel : !fresh" class="flex items-center gap-2">
+    <p v-if="lastSyncedLabel" class="text-xs text-muted">Last Synced · {{ lastSyncedLabel }}</p>
+    <UButton
+      v-if="!liveSession"
+      class="shrink-0"
+      size="xs"
+      color="neutral"
+      variant="outline"
+      label="Sign in to VA.gov"
+      @click="$emit('signIn')"
+    />
+  </div>
 </template>

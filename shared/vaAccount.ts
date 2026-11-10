@@ -11,12 +11,17 @@ export function vaAccountIdFromUser(payload: unknown): string | null {
   return typeof id === 'string' && /^[a-z0-9-]{8,100}$/i.test(id) ? id : null
 }
 
-export async function registerVaAccount(payload: unknown): Promise<Identity | null> {
+async function establishOwnerViaWorker(accountId: string): Promise<string | null> {
+  const result = await browser.runtime.sendMessage({ type: 'VCH_VA_ACCOUNT', accountId })
+  return result?.ok && typeof result.epoch === 'string' ? result.epoch : null
+}
+
+export async function registerVaAccount(payload: unknown, establishOwner = establishOwnerViaWorker): Promise<Identity | null> {
   const accountId = vaAccountIdFromUser(payload)
   if (!accountId) { current = null; cacheEpoch = null; return null }
   try {
-    const result = await browser.runtime.sendMessage({ type: 'VCH_VA_ACCOUNT', accountId })
-    current = result?.ok && typeof result.epoch === 'string' ? { accountId, epoch: result.epoch } : null
+    const epoch = await establishOwner(accountId)
+    current = epoch ? { accountId, epoch } : null
     cacheEpoch = current?.epoch ?? null
     return current
   } catch { current = null; cacheEpoch = null; return null }

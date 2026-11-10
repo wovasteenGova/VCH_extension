@@ -3,12 +3,12 @@ import { hasLocalDataConsent } from './privacyConsent'
 import type { VaFetchResponse } from './messaging'
 import { fetchViaVaGovTab, parseVaResponse } from './vaGovTabFetch'
 
-async function vaFetchDirect(url: string): Promise<VaFetchResponse> {
-  const result = await requestVa(url)
+async function vaFetchDirect(url: string, request: typeof requestVa): Promise<VaFetchResponse> {
+  const result = await request(url)
   return result.text !== undefined ? parseVaResponse(result.status, result.text, result.ownerEpoch) : { ok: false, status: result.status, error: result.error ?? 'Could not reach VA.gov.' }
 }
 
-export async function vaFetch(url: string): Promise<VaFetchResponse> {
+export async function vaFetch(url: string, request = requestVa): Promise<VaFetchResponse> {
   if (!isAllowedVaRequest(url)) {
     return { ok: false, status: 0, error: 'Only api.va.gov URLs are allowed' }
   }
@@ -20,7 +20,7 @@ export async function vaFetch(url: string): Promise<VaFetchResponse> {
   const viaTab = await fetchViaVaGovTab(url)
   // Do not repeat a timed-out or expired-session request against the same API.
   // Direct extension fetch is only a fallback when no VA tab is available.
-  return viaTab ?? vaFetchDirect(url)
+  return viaTab ?? vaFetchDirect(url, request)
 }
 
 export async function fetchVaClaimsList() {

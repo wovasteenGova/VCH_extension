@@ -571,7 +571,7 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
             <UBadge
               class="mt-2"
               :color="row.static === true ? 'success' : 'neutral'"
-              size="xs"
+              size="md"
               variant="soft"
             >
               {{ row.static === true ? 'Static' : row.static === false ? 'Non-static' : 'Static status unavailable' }}

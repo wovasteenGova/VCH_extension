@@ -277,31 +277,51 @@ export function decisionLetterKey(row: VaLetterIndexRow) {
 }
 
 const VA_CLAIM_LETTERS_INDEX = 'https://api.va.gov/v0/claim_letters'
+export const REFRESH_VA_DECISION_LETTERS = 'VCH_REFRESH_VA_DECISION_LETTERS'
+export type VaDecisionLetterRefreshResult =
+  | { ok: true, rows: VaLetterIndexRow[], ownerEpoch: string, saved: boolean }
+  | { ok: false, error: string }
 
-async function fetchClaimLettersIndexPage(page: number): Promise<VaFetchResponse> {
-  const url = `${VA_CLAIM_LETTERS_INDEX}?page=${page}`
+async function fetchClaimLettersIndexPage(url: string): Promise<VaFetchResponse> {
   if (isVaGovPageContext()) {
     return fetchVaJsonInPage(url)
   }
   return vaFetch(url)
 }
 
+function isEmptyLetterIndex(payload: unknown) {
+  if (Array.isArray(payload)) return payload.length === 0
+  if (!payload || typeof payload !== 'object') return false
+  const { data, claimLetters, letters, documents, errors } = payload as Record<string, unknown>
+  if (Array.isArray(errors) && errors.length) return false
+  return [data, claimLetters, letters, documents].some(value => {
+    if (Array.isArray(value)) return value.length === 0
+    if (!value || typeof value !== 'object') return false
+    const nested = value as Record<string, unknown>
+    return [nested.documents, nested.data].some(list => Array.isArray(list) && list.length === 0)
+  })
+}
+
 /** Paginated GET /v0/claim_letters (same index used by VA.gov). */
-export async function fetchVaDecisionLetterIndex() {
+export async function fetchVaDecisionLetterIndex(fetchPage = fetchClaimLettersIndexPage) {
   const all: VaLetterIndexRow[] = []
   const seen = new Set<string>()
   let totalPages = 1
   let ownerEpoch: string | undefined
 
   for (let page = 1; page <= totalPages && page <= 100; page++) {
-    const res = await fetchClaimLettersIndexPage(page)
+    const res = await fetchPage(`${VA_CLAIM_LETTERS_INDEX}?page=${page}`)
     if (!res.ok) throw new Error(res.error)
     if (page === 1) ownerEpoch = res.ownerEpoch
     else if (ownerEpoch !== res.ownerEpoch) throw new Error('Your VA.gov account changed. Refresh the letter list and try again.')
 
     totalPages = claimLettersTotalPages(res.data)
-    const rows = unwrapLetterRows(res.data).filter(isDecisionLetterRow)
+    const rows = unwrapLetterRows(res.data).filter(row => letterRowId(row))
+    if (!rows.length && !isEmptyLetterIndex(res.data)) {
+      throw new Error('VA.gov did not return a valid decision letter list.')
+    }
     for (const row of rows) {
+      if (!isDecisionLetterRow(row)) continue
       const key = decisionLetterKey(row)
       if (seen.has(key)) continue
       seen.add(key)
