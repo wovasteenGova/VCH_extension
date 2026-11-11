@@ -3,10 +3,8 @@ import { EXTENSION_VERSION } from '@/shared/version'
 import VaClaimTrackerTab from './components/VaClaimTrackerTab.vue'
 import PrivacySettings from './components/PrivacySettings.vue'
 import VaProfileTab from './components/VaProfileTab.vue'
-import { hasLocalDataConsent, hasVaProfileCloudApproval, PRIVACY_CONSENT_KEY } from '@/shared/privacyConsent'
-import { readHubSession } from '@/shared/hubSessionRead'
+import { hasLocalDataConsent, PRIVACY_CONSENT_KEY } from '@/shared/privacyConsent'
 import { readVaTrackBridgeCachePayload } from '@/shared/vaTrackBridgeCache'
-import { saveVaProfileToVch } from '@/shared/vaProfileImport'
 import { claimBuilderTrackClaimsUrl } from '@/shared/urls'
 import HubTab from './components/HubTab.vue'
 import PopupFooterNav from './components/PopupFooterNav.vue'
@@ -38,19 +36,14 @@ async function openTracker() {
 }
 
 async function trackOnVch() {
-  if (savingVaData.value) return
+  if (tracking.value || savingProfile.value) return
   tracking.value = true
   try {
     const track = await readVaTrackBridgeCachePayload()
     if (track.claims.length || track.appeals.length) {
-      const { accountId } = await readHubSession()
-      if (!accountId || !await hasVaProfileCloudApproval(accountId)) {
-        trackAfterSave.value = true
-        activeTab.value = 'profile'
-        return
-      }
-      const result = await saveVaProfileToVch({ accountId, track, ratings: null, letters: [] })
-      if (!result.track) throw new Error(result.trackError || 'Could not save claims and appeals.')
+      trackAfterSave.value = true
+      activeTab.value = 'profile'
+      return
     }
     await openTracker()
   } catch (error) {
@@ -193,7 +186,7 @@ const tabs = [
             @saving="savingProfile = $event"
             @track="openTracker"
           />
-          <VaClaimTrackerTab v-if="vaReady && !privacyOpen && activeTab === 'claims'" :tracking="savingVaData" @track="trackOnVch" />
+          <VaClaimTrackerTab v-if="vaReady && !privacyOpen && activeTab === 'claims'" :tracking="tracking" @track="trackOnVch" />
           <HubTab v-if="localConsent && !privacyOpen && activeTab === 'hub'" />
         </div>
       </div>

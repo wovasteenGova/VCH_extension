@@ -3,6 +3,7 @@ import { readHubSession } from './hubSessionRead'
 import type { VaTrackBridgeCachePayload } from './vaTrackBridgeCache'
 import { CLAIMBUILDER_URL } from './urls'
 import { DEFAULT_HUB_ORIGIN } from './hubOrigins'
+import { checkVaCacheEpoch } from './vaDeviceCache'
 
 export type ClaimBuilderTrackImportResult = {
   ok: true
@@ -14,13 +15,14 @@ export type ClaimBuilderTrackImportResult = {
 export async function importTrackSnapshotToClaimBuilder(
   input: VaTrackBridgeCachePayload,
   accountId: string,
-  options?: { automatic?: boolean }
+  options?: { autoSyncOwnerEpoch: string }
 ): Promise<ClaimBuilderTrackImportResult> {
   const session = await readHubSession()
   if (!session.accessToken || session.accountId !== accountId || !await hasCloudConsent('track', accountId)) {
     throw new Error('Review your VCH account and approve saving VA data in VA Profile.')
   }
-  if (options?.automatic && !(await readVaProfileCloudApproval(accountId))?.autoSyncTrack) {
+  if (options && ((await readVaProfileCloudApproval(accountId))?.autoSyncTrackOwnerEpoch !== options.autoSyncOwnerEpoch
+    || !await checkVaCacheEpoch(options.autoSyncOwnerEpoch))) {
     throw new Error('Automatic claim sync is off for this account.')
   }
 
@@ -29,7 +31,7 @@ export async function importTrackSnapshotToClaimBuilder(
     method: 'POST',
     credentials: 'omit',
     redirect: 'error',
-    signal: AbortSignal.timeout(options?.automatic ? 25_000 : 120_000),
+    signal: AbortSignal.timeout(options ? 25_000 : 120_000),
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',

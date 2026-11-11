@@ -27,6 +27,11 @@ Same steps, but open **`edge://extensions`** instead of Chrome.
 
 Optional: sign in to [Veterans Central Hub](https://www.veteranscentralhub.com) in the same browser. In **VA Profile**, find decision letters, select individual PDFs or **Select all letters**, and review the shared **Save VA data to your VCH account** approval before clicking Save. Only unlocked ratings/profile and selected letters are included. **VA Profile → Data controls** manages revocation, local deletion, and optional Track sharing.
 
+## Local development (changing code)
+
+If you edit the extension in this repo, use **`npm run dev`** and load  
+`.output/chrome-mv3-dev` (hot reload). See [DEV-WORKFLOW.md](./DEV-WORKFLOW.md).
+
 ## Updates
 
 When a new release is published, download the new zip, remove the old extension in `chrome://extensions`, unzip the new folder, and **Load unpacked** again. Or replace the files in your existing folder and click **Reload** on the extension card.

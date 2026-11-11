@@ -4,7 +4,7 @@ import { withVaVaultLock } from './vaLocalVault'
 export const PRIVACY_CONSENT_KEY = 'vch-privacy-consent-v1'
 export const HUB_BOOKMARK_CACHE_KEY = 'vch-hub-bookmarks-v1'
 export type CloudScope = 'track' | 'ratings' | 'letters'
-export type VaProfileCloudApproval = { acceptedAt: string, autoSyncTrack: boolean }
+export type VaProfileCloudApproval = { acceptedAt: string, autoSyncTrackOwnerEpoch?: string }
 type Consent = {
   localAcceptedAt?: string
   cloud?: Partial<Record<CloudScope, { accountId: string, acceptedAt: string }>>
@@ -45,11 +45,12 @@ async function currentHubAccountId() {
 
 function profileApproval(consent: Consent, accountId: string): VaProfileCloudApproval | null {
   const stored = consent.profileApprovals?.[accountId]
-  // The old approval covered manual saves. Retain it without enabling auto-sync.
   const acceptedAt = typeof stored === 'string' ? stored : stored?.acceptedAt
   const time = Date.parse(acceptedAt ?? '')
   if (!consent.localAcceptedAt || !acceptedAt || !(time > 0 && time <= Date.now())) return null
-  return { acceptedAt, autoSyncTrack: typeof stored === 'object' && stored.autoSyncTrack === true }
+  // Earlier approvals can still authorize manual saves. Auto-sync needs a VA cache owner.
+  const ownerEpoch = typeof stored === 'object' ? stored.autoSyncTrackOwnerEpoch : undefined
+  return typeof ownerEpoch === 'string' && ownerEpoch ? { acceptedAt, autoSyncTrackOwnerEpoch: ownerEpoch } : { acceptedAt }
 }
 
 export async function readVaProfileCloudApproval(accountId: string) {
@@ -90,25 +91,26 @@ function updateAccountApproval(
 }
 
 /** Called only when the user clicks Approve sync in VA Profile. */
-export function approveVaProfileCloudSave(accountId: string, autoSyncTrack: boolean) {
+export function approveVaProfileCloudSave(accountId: string) {
   return updateAccountApproval(accountId, consent => {
     if (profileApproval(consent, accountId)) return consent
     return {
       ...consent,
       profileApprovals: {
         ...consent.profileApprovals,
-        [accountId]: { acceptedAt: new Date().toISOString(), autoSyncTrack }
+        [accountId]: { acceptedAt: new Date().toISOString() }
       }
     }
   })
 }
 
-export function setVaProfileTrackAutoSync(accountId: string, autoSyncTrack: boolean) {
+export function setVaProfileTrackAutoSync(accountId: string, ownerEpoch: string | null) {
   return updateAccountApproval(accountId, consent => {
     const approval = profileApproval(consent, accountId)
     if (!approval) throw new Error('Approve sync for this account first.')
-    if (approval.autoSyncTrack === autoSyncTrack) return consent
-    return { ...consent, profileApprovals: { ...consent.profileApprovals, [accountId]: { ...approval, autoSyncTrack } } }
+    if (approval.autoSyncTrackOwnerEpoch === (ownerEpoch ?? undefined)) return consent
+    const next = ownerEpoch ? { ...approval, autoSyncTrackOwnerEpoch: ownerEpoch } : { acceptedAt: approval.acceptedAt }
+    return { ...consent, profileApprovals: { ...consent.profileApprovals, [accountId]: next } }
   })
 }
 

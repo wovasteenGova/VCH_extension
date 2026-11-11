@@ -66,7 +66,7 @@ function unlocked() {
       <h2 id="privacy-heading" class="text-base font-semibold text-highlighted">Your VA data and privacy</h2>
       <UButton v-if="accepted" aria-label="Close privacy settings" icon="i-lucide-x" variant="ghost" color="error" @click="emit('close')" />
     </div>
-    <p>With your permission, VCH reads claims, appeals, disability ratings, and profile details from your existing VA.gov session. Opening Letters checks which decision letters are available. Profile details can include your name, birth date, phone, service history, and the last four digits of your SSN.</p>
+    <p>With your permission, VCH reads claims, appeals, disability ratings, and profile details from your existing VA.gov session. Opening Letters refreshes claim letter metadata from VA.gov. Profile details can include your name, birth date, phone, service history, and the last four digits of your SSN.</p>
     <p>By default, the browser clears cached VA data when it restarts. You can set a passphrase here to keep an encrypted copy between sessions.</p>
     <p>Your VA password and VA session cookies are never sent to VCH. Optional imports use your VCH sign-in to authenticate requests to your account. With sync approval and auto-sync enabled, claims and appeals sync when they change. Ratings and selected PDFs are saved when you choose Save.</p>
     <template v-if="!accepted">

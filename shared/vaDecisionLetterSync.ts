@@ -1,26 +1,26 @@
 import { fetchVaDecisionLetterIndex, REFRESH_VA_DECISION_LETTERS, type VaDecisionLetterRefreshResult } from './vaClaimLetters'
-import { checkVaCacheEpoch, saveVaLettersCache } from './vaDeviceCache'
+import { saveVaLettersCache } from './vaDeviceCache'
 import { hasLocalDataConsent } from './privacyConsent'
+import { isCurrentVaEpoch } from './vaAccount'
 
 export async function refreshVaDecisionLetterCache(
   fetchPage?: Parameters<typeof fetchVaDecisionLetterIndex>[0],
-  save = saveVaLettersCache
+  save = saveVaLettersCache,
+  verifyEpoch = isCurrentVaEpoch
 ): Promise<VaDecisionLetterRefreshResult> {
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
       const { rows, ownerEpoch } = await fetchVaDecisionLetterIndex(fetchPage)
-      if (!ownerEpoch) return { ok: false, error: 'Sign in to VA.gov to save your decision letter list.' }
+      if (!ownerEpoch) return { ok: false, error: 'Sign in to VA.gov to save your claim letter list.' }
       if (!await hasLocalDataConsent()) return { ok: false, error: 'Enable VA data access in Data controls to refresh letters.' }
-      if (!await checkVaCacheEpoch(ownerEpoch)) continue
-
       const saved = await save(rows, ownerEpoch)
       if (!await hasLocalDataConsent()) return { ok: false, error: 'Enable VA data access in Data controls to refresh letters.' }
-      if (await checkVaCacheEpoch(ownerEpoch)) return { ok: true, rows, ownerEpoch, saved }
+      if (await verifyEpoch(ownerEpoch)) return { ok: true, rows, ownerEpoch, saved }
     }
-    return { ok: false, error: 'Open Go to VA Claim Letters, confirm you’re signed in, then refresh the list.' }
+    return { ok: false, accountChanged: true, error: 'The active VA account could not be confirmed while saving the letter list.' }
   } catch (error) {
     const message = error instanceof Error ? error.message.trim() : ''
-    return { ok: false, error: message || 'Could not read decision letters from VA.gov. Try again from your signed-in VA.gov tab.' }
+    return { ok: false, error: message || 'Could not read claim letters from VA.gov. Try again from your signed-in VA.gov tab.' }
   }
 }
 

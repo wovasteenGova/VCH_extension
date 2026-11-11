@@ -6,7 +6,8 @@ import {
   isExtensionContextValid,
   safeExtensionRuntimeMessage
 } from '@/shared/extensionContext'
-import { isVaMyVaPathname, VA_TRACK_CLAIMS_BAR_MATCHES } from '@/shared/vaEndpoints'
+import { isVaMyVaPathname, VA_TRACK_CLAIMS_BAR_MATCHES, VA_TRACK_CLAIMS_PAGE } from '@/shared/vaEndpoints'
+import { probeVaSessionOnCurrentPage } from '@/shared/vaInPageFetch'
 import { syncClaimsFromVaPage } from '@/shared/vaPageClaimsSync'
 import {
   readTrackClaimsBarCollapsed,
@@ -14,6 +15,13 @@ import {
 } from '@/shared/vaTrackClaimsBarPrefs'
 
 const BAR_HOST_ID = 'vch-web-ext-track-claims-bar'
+
+function isVaYourClaimsPage(pathname: string) {
+  return pathname === '/track-claims/your-claims' || pathname.startsWith('/track-claims/your-claims/')
+}
+
+/** VA often needs a few seconds after navigation before claims APIs authorize. */
+const AUTO_SYNC_DELAYS_MS = [1200, 3000, 6000, 12_000, 20_000]
 
 const BAR_STYLES = `
 :host {
@@ -44,9 +52,9 @@ const BAR_STYLES = `
 }
 .header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 10px 12px 4px;
 }
 .logo {
   width: 30px;
@@ -72,11 +80,21 @@ const BAR_STYLES = `
   line-height: 1.35;
   color: #9ca3af;
 }
-.actions {
+.toolbar {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  gap: 8px;
+  padding: 0 12px 8px;
+}
+.toolbar .btn,
+.va-nav .btn {
+  flex: 1;
+  min-width: 0;
+}
+.va-nav {
+  padding: 0 12px 8px;
+}
+.va-nav .btn {
+  width: 100%;
 }
 .btn {
   appearance: none;
@@ -113,28 +131,38 @@ const BAR_STYLES = `
   font-size: 14px;
 }
 .body {
-  padding: 0 12px 12px;
+  padding: 0 0 10px;
+}
+.body .subtitle {
+  margin: 0;
+  padding: 0 12px;
+  line-height: 1.4;
 }
 .status-ok { color: #86efac; }
 .status-warn { color: #fcd34d; }
 .status-error { color: #fca5a5; }
 .collapsed .body,
-.collapsed .subtitle,
-.collapsed .actions .btn:not(.icon-btn) {
+.collapsed .toolbar,
+.collapsed .va-nav,
+.collapsed .title-wrap .subtitle {
   display: none;
 }
 .collapsed .header {
   padding: 8px 10px;
   cursor: pointer;
+  align-items: center;
+}
+.collapsed [data-role="collapse"] {
+  margin-left: 0;
 }
 `
 
 export default defineContentScript({
   matches: [...VA_TRACK_CLAIMS_BAR_MATCHES],
   runAt: 'document_idle',
-  main() {
+  main(ctx) {
     const onMyVa = isVaMyVaPathname(window.location.pathname)
-    if (document.getElementById(BAR_HOST_ID)) return
+    document.getElementById(BAR_HOST_ID)?.remove()
 
     const host = document.createElement('div')
     host.id = BAR_HOST_ID
@@ -153,14 +181,17 @@ export default defineContentScript({
           <p class="title">VCH Web Extension</p>
           <p class="subtitle" data-role="subtitle">Checking your claims…</p>
         </div>
-        <div class="actions">
-          <button type="button" class="btn btn-primary" data-role="sync">Sync</button>
-          <button type="button" class="btn btn-ghost" data-role="open-ext">Open</button>
-          <button type="button" class="btn btn-ghost icon-btn" data-role="collapse" aria-label="Collapse">−</button>
-        </div>
+        <button type="button" class="btn btn-ghost icon-btn" data-role="collapse" aria-label="Collapse">−</button>
+      </div>
+      <div class="toolbar">
+        <button type="button" class="btn btn-primary" data-role="sync">Sync</button>
+        <button type="button" class="btn btn-ghost" data-role="open-ext">Open extension</button>
+      </div>
+      <div class="va-nav" data-role="va-nav">
+        <button type="button" class="btn btn-ghost" data-role="claims-link">Go to Track claims</button>
       </div>
       <div class="body">
-        <p class="subtitle" data-role="detail">Claims saved on this device after a successful sync.</p>
+        <p class="subtitle" data-role="detail">Open Track claims on VA.gov, then Sync saves claims, appeals, ratings, and your letter list on this device.</p>
       </div>
     `
     shadow.appendChild(shell)
@@ -170,9 +201,14 @@ export default defineContentScript({
     const detailEl = shell.querySelector('[data-role="detail"]') as HTMLElement
     const syncBtn = shell.querySelector('[data-role="sync"]') as HTMLButtonElement
     const openBtn = shell.querySelector('[data-role="open-ext"]') as HTMLButtonElement
+    const claimsLinkBtn = shell.querySelector('[data-role="claims-link"]') as HTMLButtonElement
+    const vaNavEl = shell.querySelector('[data-role="va-nav"]') as HTMLElement
     const collapseBtn = shell.querySelector('[data-role="collapse"]') as HTMLButtonElement
+    if (isVaYourClaimsPage(window.location.pathname)) vaNavEl.hidden = true
 
     let syncing = false
+    let autoSyncSucceeded = false
+    let autoSyncGeneration = 0
     let contextStale = !isExtensionContextValid()
 
     function showStaleExtensionContext() {
@@ -202,8 +238,14 @@ export default defineContentScript({
         return
       }
 
+      if (!await hasLocalDataConsent()) {
+        subtitleEl.textContent = 'VA data access is off'
+        subtitleEl.className = 'subtitle status-warn'
+        detailEl.textContent = 'Open the VCH extension to enable VA data access.'
+        return
+      }
       const meta = await requestVaCachePageSummary()
-      if (meta && !meta.available && await hasLocalDataConsent()) {
+      if (meta && !meta.available) {
         subtitleEl.textContent = 'Unlock VA data in the VCH extension'
         subtitleEl.className = 'subtitle status-warn'
         detailEl.textContent = 'Open the extension and enter your passphrase to use saved claims or sync.'
@@ -215,37 +257,57 @@ export default defineContentScript({
           ? `Claims saved on this device · Last synced ${synced}`
           : 'Claims saved on this device'
         subtitleEl.className = 'subtitle status-ok'
-        detailEl.textContent = 'Open the extension popup for ratings, appeals, and ClaimBuilder tools.'
+        detailEl.textContent = 'Open the extension for imports and ClaimBuilder tools.'
         return
       }
-      subtitleEl.textContent = onMyVa
-        ? 'Signed in to My VA? Tap Sync to save claims on this device.'
-        : 'Sign in above, then tap Sync to save claims on this device.'
-      subtitleEl.className = 'subtitle status-warn'
-      detailEl.textContent = onMyVa
-        ? 'Sync works from My VA — you do not need to open Track claims first.'
-        : 'Nothing cached yet: sync here after your claims list loads.'
+      const session = await probeVaSessionOnCurrentPage()
+      if (session === 'signed_in') {
+        subtitleEl.textContent = 'Signed in to VA.gov'
+        subtitleEl.className = 'subtitle status-ok'
+        detailEl.textContent = syncing
+          ? 'Syncing claims on this device…'
+          : 'Sync runs automatically on this page.'
+        return
+      }
+      if (session === 'signed_out') {
+        subtitleEl.textContent = 'Sign in to VA.gov to save claims'
+        subtitleEl.className = 'subtitle status-warn'
+        detailEl.textContent = onMyVa
+          ? 'Use Sign in above on this page. Sync runs automatically after you sign in, or open Track claims.'
+          : 'Sign in on VA.gov in this browser. Sync runs automatically when claims load.'
+        return
+      }
+      subtitleEl.textContent = 'Checking VA sign-in…'
+      subtitleEl.className = 'subtitle'
+      detailEl.textContent = 'If you are signed in, wait a moment or tap Sync.'
     }
 
-    async function runSync() {
+    async function runSync(automatic = false): Promise<boolean> {
       if (syncing || contextStale || !isExtensionContextValid()) {
         if (!contextStale && !isExtensionContextValid()) showStaleExtensionContext()
-        return
-      }
-      if (!await hasLocalDataConsent()) {
-        detailEl.textContent = 'Open the VCH extension and enable VA data access before syncing.'
-        return
+        return false
       }
       syncing = true
-      syncBtn.disabled = true
-      syncBtn.textContent = '…'
-      subtitleEl.textContent = 'Syncing claims…'
-      subtitleEl.className = 'subtitle'
 
       try {
+        if (!await hasLocalDataConsent()) {
+          await refreshStatusMessage()
+          return false
+        }
+        const summary = await requestVaCachePageSummary()
+        if (summary && !summary.available) {
+          await refreshStatusMessage()
+          return false
+        }
+        syncBtn.disabled = true
+        syncBtn.textContent = '…'
+        subtitleEl.textContent = 'Syncing claims…'
+        subtitleEl.className = 'subtitle'
+        detailEl.textContent = 'Keep this tab open until sync finishes.'
         const result = await syncClaimsFromVaPage()
 
         if (result.ok) {
+          autoSyncSucceeded = true
           const claimPart = result.count
             ? `${result.count} claim${result.count === 1 ? '' : 's'}`
             : 'no new claims'
@@ -255,20 +317,27 @@ export default defineContentScript({
           subtitleEl.textContent = `Saved ${claimPart}${appealPart} on this device`
           subtitleEl.className = 'subtitle status-ok'
           detailEl.textContent = 'To send decision PDFs to VCH, open the extension’s Letters tab and select your letters.'
-          return
+          return true
         }
 
+        if (automatic) {
+          return false
+        }
         subtitleEl.textContent = result.error || 'Could not sync claims'
         subtitleEl.className = 'subtitle status-error'
         detailEl.textContent = onMyVa
           ? 'Make sure you are signed in to My VA, wait a moment, then tap Sync again.'
           : 'Make sure you are signed in and this claims page finished loading.'
+        return false
       } catch (error) {
-        subtitleEl.textContent = error instanceof Error ? error.message : 'Could not sync claims'
-        subtitleEl.className = 'subtitle status-error'
-        detailEl.textContent = onMyVa
-          ? 'Make sure you are signed in to My VA, wait a moment, then tap Sync again.'
-          : 'Make sure you are signed in and this claims page finished loading.'
+        if (!automatic) {
+          subtitleEl.textContent = error instanceof Error ? error.message : 'Could not sync claims'
+          subtitleEl.className = 'subtitle status-error'
+          detailEl.textContent = onMyVa
+            ? 'Make sure you are signed in to My VA, wait a moment, then tap Sync again.'
+            : 'Make sure you are signed in and this claims page finished loading.'
+        }
+        return false
       } finally {
         syncing = false
         syncBtn.disabled = false
@@ -276,8 +345,33 @@ export default defineContentScript({
       }
     }
 
+    function delay(ms: number) {
+      return new Promise<void>(resolve => { ctx.setTimeout(resolve, ms) })
+    }
+
+    async function runAutomaticSyncLoop(generation: number) {
+      for (const waitMs of AUTO_SYNC_DELAYS_MS) {
+        if (generation !== autoSyncGeneration || autoSyncSucceeded || contextStale) return
+        await delay(waitMs)
+        if (generation !== autoSyncGeneration || autoSyncSucceeded || contextStale) return
+        if (await runSync(true)) return
+      }
+      if (generation !== autoSyncGeneration || autoSyncSucceeded || contextStale) return
+      await refreshStatusMessage()
+    }
+
+    function scheduleAutomaticSync() {
+      autoSyncGeneration++
+      const generation = autoSyncGeneration
+      void runAutomaticSyncLoop(generation)
+    }
+
     syncBtn.addEventListener('click', () => {
       void runSync()
+    })
+
+    claimsLinkBtn.addEventListener('click', () => {
+      window.location.assign(VA_TRACK_CLAIMS_PAGE)
     })
 
     openBtn.addEventListener('click', () => {
@@ -319,7 +413,16 @@ export default defineContentScript({
 
       await applyCollapsed(await readTrackClaimsBarCollapsed())
       await refreshStatusMessage()
-      // A page load is not a request to read VA records. Sync requires this button.
+      scheduleAutomaticSync()
     })()
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || autoSyncSucceeded || contextStale) return
+    void refreshStatusMessage().then(() => scheduleAutomaticSync())
+  })
+
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) scheduleAutomaticSync()
+  })
   }
 })

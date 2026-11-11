@@ -10,7 +10,6 @@ import {
   saveVaClaimsCache,
   saveVaLettersCache,
   saveVaRatingsCache,
-  touchVaCacheSync
 } from './vaDeviceCache'
 import { fetchVaJsonInPage } from './vaInPageFetch'
 
@@ -23,7 +22,7 @@ export type VaPageClaimsSyncResult = {
   error?: string
 }
 
-/** The VA.gov Sync button also warms the local ratings and letter list. */
+/** Sync claims, appeals, ratings, and the letter list from the VA.gov tab. */
 export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
   const summary = await requestVaCachePageSummary()
   if (!summary?.available) {
@@ -49,24 +48,21 @@ export async function syncClaimsFromVaPage(): Promise<VaPageClaimsSyncResult> {
   let savedClaims = false
   let savedAppeals = false
 
-  if (claimsRes.ok) {
+  if (claimsRes.ok && claimsRes.ownerEpoch) {
     const parsed = unwrapVaList(claimsRes.data)
       .map(item => parseVaClaim(item))
       .filter(Boolean) as ParsedVaClaim[]
-    savedClaims = await saveVaClaimsCache(parsed)
-
+    savedClaims = await saveVaClaimsCache(parsed, claimsRes.ownerEpoch)
   }
 
-  if (appealsRes.ok) {
+  if (appealsRes.ok && appealsRes.ownerEpoch) {
     const parsed = parseVaAppealsList(appealsRes.data)
-    savedAppeals = await saveVaAppealsCache(parsed)
-
+    savedAppeals = await saveVaAppealsCache(parsed, appealsRes.ownerEpoch)
   }
 
   // Finish saving the letter list before the user leaves the VA.gov page.
   await lettersSync
   if (savedClaims || savedAppeals) {
-    await touchVaCacheSync()
     const cache = await requestVaCachePageSummary()
     return {
       ok: true,

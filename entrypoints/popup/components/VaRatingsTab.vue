@@ -11,6 +11,7 @@ import { checkVaCacheEpoch, isRecentVaDeviceSync, readVaDeviceCache, saveVaRatin
 import { assessRatingsAvailability, type RatingsAvailability } from '@/shared/ratingsAvailability'
 import { RATINGS_LOCK_CREDENTIAL_KEY } from '@/shared/ratingsPasskeyLock'
 import { useRatingsPasskeyLock } from '../composables/useRatingsPasskeyLock'
+import { isVaVerifyAccountError, vaVerifyAccountHelpText } from '@/shared/vaRequest'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
 
 const props = defineProps<{ active: boolean }>()
@@ -80,6 +81,14 @@ const gateMessage = computed(() => {
   if (ratingsGate.value.available) return ''
   return ratingsGate.value.message
 })
+
+const ratingsVerifyAccountError = computed(() => isVaVerifyAccountError(error.value))
+
+const ratingsErrorAlertDescription = computed(() =>
+  ratingsVerifyAccountError.value
+    ? vaVerifyAccountHelpText()
+    : 'Open your disability rating on VA.gov in this browser, then refresh here.'
+)
 
 const emptyUnlockedMessage = computed(() => {
   if (error.value) return error.value
@@ -453,11 +462,20 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
         variant="soft"
         icon="i-lucide-triangle-alert"
         :title="error"
-        description="Open your disability rating on VA.gov in this browser, then refresh here."
+        :description="ratingsErrorAlertDescription"
       >
         <template #actions>
+          <UButton
+            size="sm"
+            color="primary"
+            variant="soft"
+            icon="i-lucide-refresh-cw"
+            label="Refresh"
+            :loading="ratingsSyncing"
+            @click="refreshRatingsAndProfile"
+          />
           <UButton size="sm" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />
-          <UButton size="sm" color="primary" variant="soft" label="Open disability rating" @click="openVaDisabilityRating" />
+          <UButton size="sm" color="neutral" variant="ghost" label="Open disability rating" @click="openVaDisabilityRating" />
         </template>
       </UAlert>
 

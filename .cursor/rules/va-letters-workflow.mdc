@@ -1,0 +1,33 @@
+---
+description: VA letters import — two repos, build after changes, do not re-debate settled product choices
+alwaysApply: true
+---
+
+# VA claim letters (extension + ClaimBuilder)
+
+## Two codebases — do not mix them up
+
+| Repo | Path (typical) | Owns |
+|------|----------------|------|
+| **VCH Web Extension** | This workspace (`VCH_extension`) | VA.gov fetch, popup UI, PDF download, POST to ClaimBuilder upload API |
+| **ClaimBuilder** | `../ClaimBuilder` (sibling on Desktop) | Document library, Extension tab, `vaLetterClassification`, OCR/analysis pipeline |
+
+UI that splits **Documents** vs **Extension** imports and row badges lives in **ClaimBuilder**, not the extension build. Reloading only the Chrome unpacked extension does not deploy ClaimBuilder changes.
+
+## After every extension code change
+
+**Active development:** keep `npm run dev` running; WXT hot-reloads into `.output/chrome-mv3-dev`. Tell the user to reopen the popup (refresh VA.gov tabs for content-script changes). See `docs/DEV-WORKFLOW.md`.
+
+**Before release / final QA:** run `npm test` then `npm run build`, and load `.output/chrome-mv3`.
+
+## Product choices (already decided — do not re-litigate each session)
+
+1. **Import all** VA index rows in the extension list; **decisions first**; full PDF analysis on server only when content supports it (not metadata type 184 alone).
+2. **ClaimBuilder library**: extension PDFs in **Extension** tab; hide from main **Documents** browse (composer Documents browse already excludes them).
+3. **Global all-documents page**: **paused** unless user asks again.
+4. **Track Claims decision letter card**: do **not** auto-attach all letters to every claim; `buildDecisionLetterUploadsForTrack` is not wired. Upload PDF on Track stays until post-lock-down wiring. Remind user after extension import is locked down (see personal store note `vch-remind-after-extension-lockdown.md`).
+5. **Composer attach**: folder control opens library; not a separate paperclip. Extension imports can still be attached from Extension tab unless user later forbids it.
+
+## Known extension bug area
+
+Letters tab disables after **Import to VCH** when library status refresh races import (`refreshSerial` / `applyEpoch` in `VaDecisionLettersTab.vue`). If “everything disabled until refresh,” check that pattern before reinventing fixes.

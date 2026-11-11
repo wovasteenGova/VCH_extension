@@ -3,7 +3,7 @@ import { hasLocalDataConsent } from './privacyConsent'
 import type { VaFetchResponse } from './messaging'
 import { fetchViaVaGovTab, parseVaResponse } from './vaGovTabFetch'
 
-async function vaFetchDirect(url: string, request: typeof requestVa): Promise<VaFetchResponse> {
+export async function vaFetchDirect(url: string, request: typeof requestVa): Promise<VaFetchResponse> {
   const result = await request(url)
   return result.text !== undefined ? parseVaResponse(result.status, result.text, result.ownerEpoch) : { ok: false, status: result.status, error: result.error ?? 'Could not reach VA.gov.' }
 }

@@ -49,9 +49,16 @@ const TRACK_CLAIMS_TAB_PATTERNS = [
   'https://va.gov/my-va/*'
 ]
 
-async function findVaGovTabId(preferTrackClaims = false): Promise<number | null> {
+async function findVaGovTabId(preferTrackClaims = false, preferLetters = false): Promise<number | null> {
   const tabsApi = extensionTabsApi()
   if (!tabsApi) return null
+
+  if (preferLetters) {
+    const letterTabs = await tabsApi.query({ url: VA_GOV_TAB_PATTERNS })
+    const letters = letterTabs.filter(tab => /^https:\/\/(?:www\.)?va\.gov\/track-claims\/your-claim-letters\/?(?:[?#]|$)/.test(tab.url ?? ''))
+    const match = letters.find(tab => tab.active && tab.id != null) ?? letters.find(tab => tab.id != null)
+    if (match?.id != null) return match.id
+  }
 
   if (preferTrackClaims) {
     const preferred = await tabsApi.query({ url: TRACK_CLAIMS_TAB_PATTERNS })
@@ -71,7 +78,7 @@ export async function fetchViaVaGovTab(url: string): Promise<VaFetchResponse | n
   if (!tabsApi) return null
 
   const preferTrackClaims = /\/v0\/(benefits_claims|appeals|claim_letters)\b/.test(url)
-  const tabId = await findVaGovTabId(preferTrackClaims)
+  const tabId = await findVaGovTabId(preferTrackClaims, url.includes('/v0/claim_letters'))
   if (tabId == null) return null
 
   try {
@@ -135,7 +142,7 @@ export async function fetchBinaryViaVaGovTab(
     return { ok: false, status: 0, base64: '', error: 'Only api.va.gov URLs are allowed' }
   }
 
-  const tabId = await findVaGovTabId(true)
+  const tabId = await findVaGovTabId(true, true)
   if (tabId == null) return null
 
   const record = await sendVaTabMessage(tabId, {

@@ -1,8 +1,26 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isAllowedVaRequest, isPdfBytes, MAX_VA_PDF_BYTES, requestVa, VA_REQUEST_TIMEOUT_MS } from '../shared/vaRequest'
+import {
+  formatVaVerifyAccountError,
+  isAllowedVaRequest,
+  isPdfBytes,
+  isVaVerifyAccountError,
+  MAX_VA_PDF_BYTES,
+  requestVa,
+  VA_REQUEST_TIMEOUT_MS
+} from '../shared/vaRequest'
 vi.mock('../shared/vaAccount', () => ({ registerVaAccount: vi.fn(async () => ({ accountId: 'account-1', epoch: 'epoch-1' })), verifyVaAccount: vi.fn(async () => ({ accountId: 'account-1', epoch: 'epoch-1' })), isCurrentVaEpoch: vi.fn(async () => true) }))
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
+
+describe('VA account verify copy', () => {
+  it('tells signed-in users to refresh VA.gov first', () => {
+    const message = formatVaVerifyAccountError()
+    expect(message).toContain('refresh your VA.gov tab')
+    expect(message).toContain('refresh here')
+    expect(isVaVerifyAccountError(message)).toBe(true)
+    expect(isVaVerifyAccountError('Sign in on VA.gov')).toBe(false)
+  })
+})
 
 describe('read-only VA request boundary', () => {
   it.each([
@@ -39,9 +57,11 @@ describe('read-only VA request boundary', () => {
     expect(isPdfBytes(new TextEncoder().encode('{"error":"not a PDF"}'))).toBe(false)
   })
 
-  it('rejects an oversized declared PDF before consuming it', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('%PDF-', { headers: { 'Content-Length': String(MAX_VA_PDF_BYTES + 1) } })))
-    expect((await requestVa('https://api.va.gov/v0/claim_letters/uuid?document_type=184', true)).error).toContain('too large')
+  it('rejects an oversized PDF while streaming', async () => {
+    const big = new Uint8Array(MAX_VA_PDF_BYTES + 1)
+    big.set(new TextEncoder().encode('%PDF-1.7\n'), 0)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(big)))
+    expect((await requestVa('https://api.va.gov/v0/claim_letters/uuid?document_type=184', true)).error).toContain('larger than the extension can download')
   })
 
   it('aborts a stalled request instead of leaving a pending UI forever', async () => {

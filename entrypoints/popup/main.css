@@ -99,7 +99,7 @@ html.popup-expanded .popup-shell {
 
 .footer-panel-enter-from,
 .footer-panel-leave-to {
-  transform: translateY(20px);
+  transform: translateY(8px);
   opacity: 0;
 }
 

@@ -14,18 +14,29 @@ import { autoSyncApprovedVaClaims } from '@/shared/vaProfileImport'
 import { hubUrl, VCH_EXTENSION_HUB_PATH } from '@/shared/urls'
 import { REFRESH_VA_DECISION_LETTERS, type VaDecisionLetterRefreshResult } from '@/shared/vaClaimLetters'
 import { refreshVaDecisionLetterCache } from '@/shared/vaDecisionLetterSync'
-import { vaFetch } from '@/shared/vaClient'
+import { vaFetch, vaFetchDirect } from '@/shared/vaClient'
 import { requestVa } from '@/shared/vaRequest'
 
 export default defineBackground(() => {
   void prepareVaSessionCache().catch(() => undefined)
   let letterRefresh: Promise<VaDecisionLetterRefreshResult> | undefined
-  function refreshDecisionLetters() {
+  async function refreshDecisionLetters(): Promise<VaDecisionLetterRefreshResult> {
+    if (!await hasLocalDataConsent()) return { ok: false, error: 'Enable VA data access in Data controls to refresh letters.' }
+    if (await readVaVaultStatus().catch(() => null) === 'locked') {
+      return { ok: false, error: 'Unlock saved VA data in Data controls to refresh letters.' }
+    }
     const accountStore = { establishOwner: establishVaCacheOwner, checkEpoch: checkVaCacheEpoch }
-    return refreshVaDecisionLetterCache(
-      url => vaFetch(url, address => requestVa(address, false, accountStore)),
-      (rows, ownerEpoch) => applyVaCacheMutation({ field: 'letters', value: rows, ownerEpoch })
+    const request = (url: string) => requestVa(url, false, accountStore)
+    const save: NonNullable<Parameters<typeof refreshVaDecisionLetterCache>[1]> = (rows, ownerEpoch) =>
+      applyVaCacheMutation({ field: 'letters', value: rows, ownerEpoch })
+    const result = await refreshVaDecisionLetterCache(
+      url => vaFetch(url, request), save, checkVaCacheEpoch
     )
+    if (result.ok || !result.accountChanged || !await hasLocalDataConsent()) return result
+    // A tab can lose its session or change accounts while the popup refreshes.
+    // Verify again through the extension before accepting a new list.
+    const direct = await refreshVaDecisionLetterCache(url => vaFetchDirect(url, request), save, checkVaCacheEpoch)
+    return direct.ok ? direct : result
   }
 
   let syncTimer: ReturnType<typeof setTimeout> | undefined

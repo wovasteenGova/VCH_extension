@@ -160,10 +160,13 @@ let writes: Promise<unknown> = Promise.resolve()
 
 type CacheOwner = { accountId: string, epoch: string }
 
-export async function checkVaCacheEpoch(epoch: unknown) {
-  if (typeof epoch !== 'string') return false
+export async function readVaCacheOwnerEpoch() {
   const owner = await readVaVaultRecord<CacheOwner>(VA_CACHE_OWNER_KEY).catch(() => undefined)
-  return owner?.epoch === epoch
+  return typeof owner?.epoch === 'string' ? owner.epoch : null
+}
+
+export async function checkVaCacheEpoch(epoch: unknown) {
+  return typeof epoch === 'string' && epoch === await readVaCacheOwnerEpoch()
 }
 
 export function establishVaCacheOwner(accountId: string): Promise<string | null> {
@@ -220,8 +223,8 @@ async function mutateCache(mutation: CacheMutation): Promise<boolean> {
 export async function touchVaCacheSync(meta?: { vaLabel?: string | null }) {
   await mutateCache({ field: 'meta', value: meta ?? {} })
 }
-export function saveVaClaimsCache(claims: ParsedVaClaim[]) { return mutateCache({ field: 'claims', value: claims }) }
-export function saveVaAppealsCache(appeals: ParsedVaAppeal[]) { return mutateCache({ field: 'appeals', value: appeals }) }
+export function saveVaClaimsCache(claims: ParsedVaClaim[], ownerEpoch?: string) { return mutateCache({ field: 'claims', value: claims, ownerEpoch }) }
+export function saveVaAppealsCache(appeals: ParsedVaAppeal[], ownerEpoch?: string) { return mutateCache({ field: 'appeals', value: appeals, ownerEpoch }) }
 export function saveVaRatingsCache(ratings: VaDeviceRatingsCache, ownerEpoch?: string) { return mutateCache({ field: 'ratings', value: ratings, ownerEpoch }) }
 export function saveVaProfileCache(profile: ParsedVaUserProfileForImport, ownerEpoch: string) { return mutateCache({ field: 'profile', value: profile, ownerEpoch }) }
 export function saveVaLettersCache(rows: VaLetterIndexRow[], ownerEpoch: string) { return mutateCache({ field: 'letters', value: rows, ownerEpoch }) }

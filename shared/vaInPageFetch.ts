@@ -1,7 +1,21 @@
 import type { VaFetchResponse } from './messaging'
+import { VA_ENDPOINTS } from './vaEndpoints'
 import { parseVaResponse } from './vaGovTabFetch'
 import { requestVa } from './vaRequest'
 import { hasLocalDataConsent } from './privacyConsent'
+
+export type VaPageSessionState = 'signed_in' | 'signed_out' | 'unknown'
+
+/** Uses this tab's VA.gov cookies (same as the site). */
+export async function probeVaSessionOnCurrentPage(): Promise<VaPageSessionState> {
+  if (!await hasLocalDataConsent()) return 'unknown'
+  const result = await requestVa(VA_ENDPOINTS.user)
+  if (result.ok) return 'signed_in'
+  if (result.status === 401 || result.status === 403) return 'signed_out'
+  const detail = result.error ?? ''
+  if (/sign in/i.test(detail)) return 'signed_out'
+  return 'unknown'
+}
 
 export function isVaGovPageContext() {
   return typeof window !== 'undefined' && ['https://www.va.gov', 'https://va.gov'].includes(window.location.origin)

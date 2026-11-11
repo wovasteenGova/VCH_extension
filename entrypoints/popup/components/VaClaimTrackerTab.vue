@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { VA_TRACK_CLAIMS_PAGE } from '@/shared/vaEndpoints'
 import { openVaClaimsPage } from '@/shared/vaSignInNavigation'
 
 defineProps<{ tracking?: boolean }>()
@@ -17,6 +18,7 @@ import {
   type ParsedVaClaim
 } from '@/shared/vaClaimParse'
 import { probeVaSession } from '@/shared/connectionStatus'
+import { isVaVerifyAccountError, vaVerifyAccountHelpText } from '@/shared/vaRequest'
 import { isRecentVaDeviceSync, readVaDeviceCache, readVaCacheMeta, saveVaClaimsCache, subscribeVaDeviceCache } from '@/shared/vaDeviceCache'
 import { hasOpenVaGovTab } from '@/shared/vaGovTabFetch'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
@@ -83,7 +85,10 @@ const showCachedClaimsRestoreHint = computed(() =>
     && hasClaimsCache.value && !claims.value.length && !isStale.value
 )
 
+const claimsVerifyAccountError = computed(() => isVaVerifyAccountError(error.value))
+
 const claimsErrorDescription = computed(() => {
+  if (claimsVerifyAccountError.value) return vaVerifyAccountHelpText()
   if (!vaGovTabOpen.value) {
     return 'No claims saved on this device yet. Open Track claims on VA.gov in this browser, sign in, let your list load, then refresh here or use the VCH bar at the bottom of that page.'
   }
@@ -298,6 +303,26 @@ function openVaClaims() {
       @click="emit('track')"
     />
 
+    <div class="flex flex-wrap gap-2">
+      <UButton
+        size="sm"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-refresh-cw"
+        label="Refresh claims"
+        :loading="loading"
+        @click="handleRefreshClaims"
+      />
+      <UButton
+        variant="outline"
+        :to="VA_TRACK_CLAIMS_PAGE"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Go to VA Track Claims
+      </UButton>
+    </div>
+
     <div class="flex items-center justify-between gap-2">
       <p class="font-medium text-sm text-highlighted">
         Your VA claims
@@ -353,8 +378,17 @@ function openVaClaims() {
       :description="claimsErrorDescription"
     >
       <template #actions>
+        <UButton
+          size="sm"
+          color="primary"
+          variant="soft"
+          icon="i-lucide-refresh-cw"
+          :label="claimsVerifyAccountError ? 'Refresh' : 'Try again'"
+          :loading="loading"
+          @click="handleRefreshClaims"
+        />
         <UButton size="sm" color="neutral" variant="outline" label="Sign in to VA.gov" @click="openVaSignIn" />
-        <UButton size="sm" color="primary" variant="soft" label="Open claims page" @click="openVaClaims" />
+        <UButton size="sm" color="neutral" variant="ghost" label="Open claims page" @click="openVaClaims" />
       </template>
     </UAlert>
 

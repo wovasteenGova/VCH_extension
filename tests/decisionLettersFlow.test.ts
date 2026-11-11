@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { vaFetch } from '../shared/vaClient'
 import { fetchBinaryViaVaGovTab } from '../shared/vaGovTabFetch'
-import { buildDecisionLetterUploadsForTrack, isDecisionLetterRow, listVaDecisionLetters, rowFromClaimLetterEntry, downloadVaDecisionLetter } from '../shared/vaClaimLetters'
+import { buildDecisionLetterUploadsForTrack, isDecisionLetterRow, listVaDecisionLetters, rowFromClaimLetterEntry, downloadVaDecisionLetter, vaLetterIndexCategory, vaLetterListPriority } from '../shared/vaClaimLetters'
 import { fetchImportedDecisionLetterKeys, sendDecisionLetterToVch } from '../shared/decisionLetterImport'
 import { hasCloudConsent } from '../shared/privacyConsent'
 
@@ -18,6 +18,17 @@ const entry = (id: string, docType: number) => ({ documentId: id, docType, recei
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(hasCloudConsent).mockResolvedValue(false) })
 
 describe('VA decision-letter discovery and import', () => {
+  it('labels evidence requests from VA index metadata', () => {
+    const row = rowFromClaimLetterEntry({
+      documentId: 'evidence',
+      docType: 34,
+      receivedAt: '2026-10-22',
+      typeDescription: 'Evidence request letter'
+    })!
+    expect(vaLetterIndexCategory(row)).toBe('evidence_request')
+    expect(vaLetterListPriority(row)).toBeGreaterThan(vaLetterListPriority(rowFromClaimLetterEntry(entry('decision', 184))!))
+  })
+
   it('recognizes actual camelCase VA.gov letter rows without descriptive labels', () => {
     const row = rowFromClaimLetterEntry(entry('document-id', 184))!
     expect(row.documentUuid).toBe('document-id')
@@ -27,10 +38,10 @@ describe('VA decision-letter discovery and import', () => {
     expect(isDecisionLetterRow(rowFromClaimLetterEntry(entry('evidence-request', 34))!)).toBe(false)
   })
 
-  it('reads all reported pages, deduplicates rows, and keeps decisions only', async () => {
+  it('reads all reported pages, deduplicates rows, and lists every letter with decisions first', async () => {
     vi.mocked(vaFetch).mockResolvedValueOnce({ ok: true, status: 200, data: { data: [entry('one', 184), entry('request', 34)], meta: { pagination: { totalPages: 2 } } } })
       .mockResolvedValueOnce({ ok: true, status: 200, data: { data: [entry('one', 184), entry('two', 27)], meta: { pagination: { totalPages: 2 } } } })
-    expect((await listVaDecisionLetters()).map(row => row.documentUuid)).toEqual(['one', 'two'])
+    expect((await listVaDecisionLetters()).map(row => row.documentUuid)).toEqual(['one', 'two', 'request'])
     expect(vaFetch).toHaveBeenNthCalledWith(2, 'https://api.va.gov/v0/claim_letters?page=2')
   })
 
@@ -43,7 +54,7 @@ describe('VA decision-letter discovery and import', () => {
     vi.mocked(vaFetch).mockResolvedValueOnce({ ok: true, status: 200, data: { data: [] } })
       .mockResolvedValueOnce({ ok: true, status: 200, data: { data: [], errors: [{ title: 'Session expired' }] } })
     await expect(listVaDecisionLetters()).resolves.toEqual([])
-    await expect(listVaDecisionLetters()).rejects.toThrow('valid decision letter list')
+    await expect(listVaDecisionLetters()).rejects.toThrow('valid claim letter list')
   })
 
   it('does not combine pages from different VA accounts', async () => {

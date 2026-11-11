@@ -78,10 +78,9 @@ function measureListSpace() {
   if (!shell || !chrome || !footer) return
 
   const chromeBottom = chrome.getBoundingClientRect().bottom
-  const footerTop = footer.getBoundingClientRect().top
-  const disclaimer = footer.querySelector('.popup-disclaimer') as HTMLElement | null
-  const disclaimerHeight = disclaimer?.offsetHeight ?? 0
-  const availableForPanel = Math.floor(footerTop - chromeBottom - 12 - disclaimerHeight)
+  const navLabels = navRef.value.querySelector('.popup-footer-nav-labels')
+  const anchorTop = navLabels?.getBoundingClientRect().top ?? footer.getBoundingClientRect().top
+  const availableForPanel = Math.floor(anchorTop - chromeBottom - 2)
 
   // Cap the whole panel (header + list); inner flex column handles list scrolling.
   listMaxHeight.value = Math.max(88, availableForPanel)
@@ -143,7 +142,7 @@ function openLink(url: string) {
       <div
         v-if="activePanel"
         ref="listRef"
-        class="popup-footer-link-panel absolute bottom-full left-0 right-0 z-30 mb-1.5 flex w-full flex-col gap-2 overflow-hidden rounded-lg border border-default bg-default p-2 shadow-lg"
+        class="popup-footer-link-panel absolute bottom-full left-0 right-0 z-30 mb-0 flex w-full flex-col gap-2 overflow-hidden rounded-t-lg rounded-b-none border border-default bg-default p-2 shadow-lg"
         role="dialog"
         :aria-label="activePanel.title"
         :style="listMaxHeight != null ? { maxHeight: `${listMaxHeight}px` } : undefined"

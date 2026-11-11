@@ -16,8 +16,36 @@ export function isAllowedVaRequest(value: unknown, method = 'GET', binary = fals
 }
 
 export const VA_REQUEST_TIMEOUT_MS = 30_000
-export const MAX_VA_PDF_BYTES = 12 * 1024 * 1024
-const MAX_JSON_BYTES = 4 * 1024 * 1024
+export const MAX_VA_PDF_BYTES = 24 * 1024 * 1024
+export const MAX_JSON_BYTES = 4 * 1024 * 1024
+/** Full claim and appeal index payloads can exceed the default JSON cap. */
+export const MAX_VA_LIST_JSON_BYTES = 32 * 1024 * 1024
+
+function jsonByteLimitForUrl(url: string) {
+  try {
+    const { pathname } = new URL(url)
+    if (pathname === '/v0/benefits_claims' || pathname === '/v0/appeals' || pathname === '/v0/claim_letters') {
+      return MAX_VA_LIST_JSON_BYTES
+    }
+  } catch { /* ignore */ }
+  return MAX_JSON_BYTES
+}
+
+function responseTooLargeMessage(url: string, binary: boolean) {
+  try {
+    const { pathname } = new URL(url)
+    if (binary && /^\/v0\/claim_letters\//.test(pathname)) {
+      return 'This decision PDF is larger than the extension can download. Open it on VA.gov or upload the PDF in ClaimBuilder.'
+    }
+    if (pathname === '/v0/benefits_claims') {
+      return 'The VA claims list is larger than this refresh can load. Use Sync on the VCH bar at the bottom of a VA.gov Track claims page, or keep using claims saved on this device.'
+    }
+    if (pathname === '/v0/claim_letters') {
+      return 'One page of your VA letter list is very large. Stay on Track claims on VA.gov, sync on the VCH bar, then refresh letters in the extension.'
+    }
+  } catch { /* ignore */ }
+  return 'The VA response is too large.'
+}
 export type VaRawResponse = { ok: boolean, status: number, text?: string, base64?: string, contentType?: string | null, error?: string, ownerEpoch?: string }
 type VaAccountStore = {
   establishOwner: (accountId: string) => Promise<string | null>
@@ -28,11 +56,25 @@ export function isPdfBytes(bytes: Uint8Array) {
   return new TextDecoder('ascii').decode(bytes.subarray(0, 1024)).includes('%PDF-')
 }
 
+export const VA_VERIFY_ACCOUNT_ERROR = 'Could not verify your VA.gov account.'
+
+export function formatVaVerifyAccountError() {
+  return `${VA_VERIFY_ACCOUNT_ERROR} If you are already signed in, refresh your VA.gov tab in this browser, then refresh here. If not, sign in on VA.gov and try again.`
+}
+
+export function isVaVerifyAccountError(message: string | null | undefined) {
+  return typeof message === 'string' && message.includes(VA_VERIFY_ACCOUNT_ERROR)
+}
+
+export function vaVerifyAccountHelpText() {
+  return 'If you are already signed in on VA.gov, refresh that tab, wait for the page to load, then tap refresh in the extension.'
+}
+
 export async function requestVa(url: string, binary = false, accountStore?: VaAccountStore): Promise<VaRawResponse> {
   if (!isAllowedVaRequest(url, 'GET', binary)) return { ok: false, status: 0, error: 'This VA request is not allowed.' }
   const isUser = new URL(url).pathname === '/v0/user'
   const identity = isUser ? null : await verifyVaAccount(() => requestVa('https://api.va.gov/v0/user', false, accountStore))
-  if (!isUser && !identity) return { ok: false, status: 0, error: 'Could not verify your VA.gov account. Sign in on VA.gov, then try again.' }
+  if (!isUser && !identity) return { ok: false, status: 0, error: formatVaVerifyAccountError() }
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), VA_REQUEST_TIMEOUT_MS)
   try {
@@ -40,8 +82,8 @@ export async function requestVa(url: string, binary = false, accountStore?: VaAc
       method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error', signal: controller.signal,
       headers: { Accept: binary ? 'application/pdf,application/octet-stream' : 'application/json', 'X-Key-Inflection': 'camel' }
     })
-    const limit = binary ? MAX_VA_PDF_BYTES : MAX_JSON_BYTES
-    if (Number(response.headers.get('content-length')) > limit) throw new Error('The VA response is too large.')
+    const limit = binary ? MAX_VA_PDF_BYTES : jsonByteLimitForUrl(url)
+    const tooLargeMessage = responseTooLargeMessage(url, binary)
     const reader = response.body?.getReader()
     if (!reader) throw new Error('VA returned an empty response.')
     const chunks: Uint8Array[] = []
@@ -51,7 +93,7 @@ export async function requestVa(url: string, binary = false, accountStore?: VaAc
         const { done, value } = await reader.read()
         if (done) break
         size += value.byteLength
-        if (size > limit) { await reader.cancel(); throw new Error('The VA response is too large.') }
+        if (size > limit) { await reader.cancel(); throw new Error(tooLargeMessage) }
         chunks.push(value)
       }
     } finally { reader.releaseLock() }
@@ -65,7 +107,7 @@ export async function requestVa(url: string, binary = false, accountStore?: VaAc
       let ownerEpoch = identity?.epoch
       if (isUser && response.ok) {
         const registered = await registerVaAccount(JSON.parse(text), accountStore?.establishOwner)
-        if (!registered) throw new Error('Could not verify your VA.gov account. Refresh VA.gov and try again.')
+        if (!registered) throw new Error(formatVaVerifyAccountError())
         ownerEpoch = registered.epoch
       }
       return { ok: response.ok, status: response.status, text, ownerEpoch }

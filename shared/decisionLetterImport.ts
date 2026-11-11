@@ -36,7 +36,7 @@ export async function fetchImportedDecisionLetterKeys(accountId: string): Promis
 export function decisionLetterFilename(row: VaLetterIndexRow) {
   const date = (row.letterDate ?? row.documentDate ?? row.receivedAt ?? '').slice(0, 10).replace(/[^0-9-]/g, '')
   const id = (row.documentUuid ?? row.documentId ?? row.id ?? 'letter').replace(/[^a-z0-9-]/gi, '').slice(0, 80)
-  return `VA-decision${date ? `-${date}` : ''}-${id}.pdf`
+  return `VA-letter${date ? `-${date}` : ''}-${id}.pdf`
 }
 
 /** Import to the private library without guessing an association with a claim. */

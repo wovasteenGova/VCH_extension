@@ -13,7 +13,7 @@ import {
   type VaProfileCloudApproval
 } from '@/shared/privacyConsent'
 import { readVaTrackBridgeCachePayload, type VaTrackBridgeCachePayload } from '@/shared/vaTrackBridgeCache'
-import { formatLastSynced, subscribeVaDeviceCache } from '@/shared/vaDeviceCache'
+import { checkVaCacheEpoch, formatLastSynced, readVaCacheOwnerEpoch, subscribeVaDeviceCache } from '@/shared/vaDeviceCache'
 
 const props = defineProps<{ active: boolean, tracking?: boolean, trackAfterSave?: boolean }>()
 const emit = defineEmits<{ privacy: [], saving: [busy: boolean], track: [] }>()
@@ -28,12 +28,12 @@ const approval = ref<VaProfileCloudApproval | null>(null)
 const approvalCardOpen = ref<boolean | null>(null)
 const approvalCard = ref<HTMLElement | null>(null)
 const importAfterApproval = ref(false)
-const draftAutoSyncTrack = ref(true)
 const updatingApproval = ref(false)
 const lastSyncedAt = ref<string | null>(null)
 const importedLetterKeys = ref<string[]>([])
 const includeTrack = ref(true)
 const track = shallowRef<VaTrackBridgeCachePayload | null>(null)
+const trackOwnerEpoch = ref<string | null>(null)
 const saving = ref(false)
 const syncBusy = computed(() => saving.value || props.tracking || updatingApproval.value)
 const accountId = ref<string | null>(null)
@@ -46,7 +46,16 @@ const toast = useToast()
 
 const ratingsReady = computed(() => ratings.value?.ready === true)
 const previewItems = computed(() => ratingsReady.value ? ratings.value?.previewItems ?? [] : [])
-const selectedLetters = computed(() => letters.value?.selectedLetters ?? [])
+const selectedLetters = computed(() => {
+  const exposed = letters.value?.selectedLetters
+  return Array.isArray(exposed) ? exposed : []
+})
+
+function letterRowsForImport() {
+  const snap = letters.value?.selectedLetterRowsForImport?.()
+  if (Array.isArray(snap) && snap.length) return snap
+  return JSON.parse(JSON.stringify(selectedLetters.value)) as typeof snap
+}
 const hasTrack = computed(() => Boolean(track.value && (track.value.claims.length || track.value.appeals.length)))
 const trackSummary = computed(() => {
   const claims = track.value?.claims.length ?? 0
@@ -67,7 +76,6 @@ async function refreshAccount() {
   if (accountId.value !== session.accountId) {
     if (accountReady.value) approvalCardOpen.value = null
     if (accountId.value) importAfterApproval.value = false
-    draftAutoSyncTrack.value = true
     feedback.value = ''
   }
   approval.value = currentApproval
@@ -79,6 +87,7 @@ async function refreshAccount() {
 }
 
 async function refreshTrack() {
+  trackOwnerEpoch.value = await readVaCacheOwnerEpoch()
   track.value = await readVaTrackBridgeCachePayload()
 }
 
@@ -140,7 +149,7 @@ async function updateApproval(action: (accountId: string) => Promise<void>) {
 async function approveSync() {
   approvalCardOpen.value = true
   const requestedAccount = accountId.value
-  const approved = await updateApproval(id => approveVaProfileCloudSave(id, draftAutoSyncTrack.value))
+  const approved = await updateApproval(approveVaProfileCloudSave)
   if (!approved || requestedAccount !== accountId.value) return
   if (importAfterApproval.value) {
     importAfterApproval.value = false
@@ -160,11 +169,13 @@ function importSelectedLetters() {
 }
 
 function setAutoSync(enabled: boolean) {
-  if (!approval.value) {
-    draftAutoSyncTrack.value = enabled
-    return
-  }
-  void updateApproval(id => setVaProfileTrackAutoSync(id, enabled))
+  const ownerEpoch = trackOwnerEpoch.value
+  void updateApproval(async id => {
+    if (enabled && (!ownerEpoch || !await checkVaCacheEpoch(ownerEpoch))) {
+      throw new Error('Refresh your claims on VA.gov before turning on automatic uploads.')
+    }
+    await setVaProfileTrackAutoSync(id, enabled ? ownerEpoch : null)
+  })
 }
 
 async function revokeApproval() {
@@ -175,7 +186,8 @@ async function revokeApproval() {
 }
 
 async function save(scope: 'all' | 'track' | 'letters' = 'all') {
-  const hasSelection = scope === 'letters' ? selectedLetters.value.length : scope === 'track' ? hasTrack.value : canSave.value
+  const letterBatch = scope === 'track' ? [] : letterRowsForImport()
+  const hasSelection = scope === 'letters' ? letterBatch.length > 0 : scope === 'track' ? hasTrack.value : canSave.value
   if (!approval.value || !hasSelection || syncBusy.value) return
   const destinationAccount = accountId.value
   saving.value = true
@@ -187,7 +199,7 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
       accountId: destinationAccount,
       track: scope === 'track' || (scope === 'all' && includeTrack.value) ? track.value : null,
       ratings: scope === 'all' && ratingsReady.value && ratings.value ? JSON.parse(JSON.stringify(ratings.value.payload)) : null,
-      letters: scope === 'track' ? [] : JSON.parse(JSON.stringify(selectedLetters.value))
+      letters: letterBatch
     }, {
       progress: description => toast.update(notification.id, { description }),
       letter: outcome => {
@@ -207,6 +219,10 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
     saving.value = false
     emit('saving', false)
     void refreshAccount()
+    if (scope !== 'track' && letters.value?.refreshImportStatus) {
+      // Server receipt can lag behind uploads; merge keys instead of replacing.
+      void new Promise(resolve => setTimeout(resolve, 600)).then(() => letters.value?.refreshImportStatus())
+    }
   }
 }
 </script>
@@ -240,19 +256,20 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
         <UButton size="xs" variant="ghost" icon="i-lucide-refresh-cw" aria-label="Refresh VCH account" :disabled="updatingApproval" @click="refreshAccount" />
       </div>
       <p class="text-xs text-muted">{{ lastSyncLabel ? `Last synced ${lastSyncLabel}` : 'No sync recorded yet' }}</p>
-      <p class="text-sm text-muted">Approve once for this VCH account. Save unlocked ratings and profile details, selected decision letters, and claims and appeals from this browser.</p>
+      <p class="text-sm text-muted">Confirm this is the VCH account you want to send your VA data to. Approval lets you save claims, appeals, unlocked ratings, profile details, and selected claim letters.</p>
       <UCheckbox
-        :model-value="approval?.autoSyncTrack ?? draftAutoSyncTrack"
-        :disabled="syncBusy"
-        label="Auto-sync claims and appeals"
-        description="Sync when claims or appeals on this device change. Ratings and decision letters are saved when you choose Save."
+        v-if="approval && !trackAfterSave"
+        :model-value="Boolean(trackOwnerEpoch && approval.autoSyncTrackOwnerEpoch === trackOwnerEpoch)"
+        :disabled="syncBusy || !trackOwnerEpoch"
+        label="Automatically upload claims and appeals"
+        :description="trackOwnerEpoch ? 'Send changes from this VA.gov account to the VCH account shown above. Ratings and letters require a manual save.' : 'Refresh your claims on VA.gov to enable automatic uploads for that account.'"
         @update:model-value="setAutoSync($event === true)"
       />
-      <p v-if="importAfterApproval" class="text-sm font-medium">Import {{ selectedLetters.length }} selected decision {{ selectedLetters.length === 1 ? 'letter' : 'letters' }} after approving.</p>
+      <p v-if="importAfterApproval" class="text-sm font-medium">Import {{ selectedLetters.length }} selected {{ selectedLetters.length === 1 ? 'letter' : 'letters' }} after approving.</p>
       <p v-else-if="trackAfterSave" class="text-sm font-medium">Sync your claims and appeals to open Claim Tracker.</p>
-      <UCheckbox v-if="approval && hasTrack" v-model="includeTrack" :disabled="syncBusy" :label="`Include ${trackSummary} in this save`" />
-      <p v-if="approval" class="text-sm">{{ ratingsReady ? 'Ratings and profile included.' : 'Unlock ratings in the Ratings tab to include them.' }} {{ selectedLetters.length }} decision letter{{ selectedLetters.length === 1 ? '' : 's' }} selected.</p>
-      <div v-if="approval && previewItems.length" class="rounded-md border border-default p-2.5">
+      <UCheckbox v-if="approval && hasTrack && !trackAfterSave" v-model="includeTrack" :disabled="syncBusy" :label="`Include ${trackSummary} in this save`" />
+      <p v-if="approval && !trackAfterSave" class="text-sm">{{ ratingsReady ? 'Ratings and profile included.' : 'Unlock ratings in the Ratings tab to include them.' }} {{ selectedLetters.length }} claim letter{{ selectedLetters.length === 1 ? '' : 's' }} selected.</p>
+      <div v-if="approval && !trackAfterSave && previewItems.length" class="rounded-md border border-default p-2.5">
         <button type="button" class="flex w-full items-center justify-between text-left text-sm font-medium" :aria-expanded="previewOpen" @click="previewOpen = !previewOpen">
           Will send to your VCH account ({{ previewItems.length }} profile items)
           <UIcon :name="previewOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-4" />
@@ -263,7 +280,7 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
       </div>
       <UButton v-if="accountId && !approval" block icon="i-lucide-circle-check" :loading="updatingApproval || saving" :disabled="tracking" @click="approveSync">{{ importAfterApproval && selectedLetters.length ? 'Approve and import selected letters' : trackAfterSave && hasTrack ? 'Approve and open Claim Tracker' : 'Approve sync' }}</UButton>
       <template v-else-if="approval">
-        <UButton block icon="i-lucide-cloud-upload" :loading="saving" :disabled="!canSave || syncBusy" @click="save()">{{ trackAfterSave && includeTrack && hasTrack ? 'Save and open Claim Tracker' : 'Save to my VCH account' }}</UButton>
+        <UButton block icon="i-lucide-cloud-upload" :loading="saving" :disabled="!(trackAfterSave ? hasTrack : canSave) || syncBusy" @click="save(trackAfterSave ? 'track' : 'all')">{{ trackAfterSave ? 'Save and open Claim Tracker' : 'Save to my VCH account' }}</UButton>
         <UButton size="sm" variant="ghost" color="error" :disabled="syncBusy" @click="revokeApproval">Revoke sync approval</UButton>
       </template>
       <UButton v-else-if="accountReady" block variant="outline" @click="openHubSignIn">Sign in to Hub</UButton>
@@ -274,16 +291,16 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
         v-model="activeProfileTab"
         :items="profileTabs"
         :unmount-on-hide="false"
-        size="sm"
+        size="md"
         :ui="{
-          list: 'gap-2 bg-transparent p-0',
+          list: 'gap-2.5 bg-transparent p-0',
           indicator: 'hidden',
-          trigger: 'va-profile-tab-trigger group/profile-tab relative rounded-none border-0 data-[state=active]:rounded-[20%] data-[state=active]:text-primary',
-          label: 'inline-flex items-center gap-1.5 rounded-[5%] px-2 py-0.5 group-data-[state=active]/profile-tab:bg-primary/15'
+          trigger: 'va-profile-tab-trigger group/profile-tab relative min-h-10 rounded-none border-0 text-base font-semibold data-[state=active]:rounded-[20%] data-[state=active]:text-primary',
+          label: 'inline-flex items-center gap-2 rounded-[5%] px-3 py-1 group-data-[state=active]/profile-tab:bg-primary/15'
         }"
       >
         <template #default="{ item }">
-          <UIcon :name="item.labelIcon" class="size-4 shrink-0" aria-hidden="true" />
+          <UIcon :name="item.labelIcon" class="size-5 shrink-0" aria-hidden="true" />
           {{ item.label }}
         </template>
         <template #ratings>

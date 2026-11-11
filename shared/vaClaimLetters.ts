@@ -20,7 +20,7 @@ export type TrackLetterUploadPayload = {
 }
 
 const MAX_LETTERS_PER_SYNC = 10
-const MAX_LETTER_BYTES = 12 * 1024 * 1024
+const MAX_LETTER_BYTES = 24 * 1024 * 1024
 
 export type VaLetterIndexRow = {
   documentUuid?: string
@@ -237,8 +237,50 @@ function letterRowId(row: VaLetterIndexRow) {
 export function isDecisionLetterRow(row: VaLetterIndexRow) {
   if (['27', '184'].includes(row.document_type ?? row.documentType ?? '')) return true
   const label = `${row.documentTypeLabel ?? ''} ${row.documentType ?? ''} ${row.typeDescription ?? ''} ${row.subject ?? ''}`.toLowerCase()
-  if (!label.trim()) return true
-  return /decision|rating|claim letter|notification|denial|grant|benefit/.test(label)
+  if (!label.trim()) return false
+  return /decision|rating|denial|grant/.test(label)
+    && !/evidence request|we need (?:you to|the following)|intent to file/.test(label)
+}
+
+/** Lower sorts earlier in the Letters tab (decisions before correspondence). */
+export function vaLetterListPriority(row: VaLetterIndexRow) {
+  const type = row.document_type ?? row.documentType ?? ''
+  if (['27', '184'].includes(type)) return 0
+  if (isDecisionLetterRow(row)) return 1
+  const label = `${row.documentTypeLabel ?? ''} ${row.typeDescription ?? ''} ${row.subject ?? ''}`.toLowerCase()
+  if (/evidence|development letter|we need|please (?:send|provide|submit)/.test(label)) return 2
+  if (/intent to file/.test(label)) return 3
+  return 4
+}
+
+export function sortVaLettersForDisplay(rows: VaLetterIndexRow[]) {
+  return [...rows].sort((a, b) => {
+    const priority = vaLetterListPriority(a) - vaLetterListPriority(b)
+    if (priority !== 0) return priority
+    const dateA = a.letterDate ?? a.documentDate ?? a.receivedAt ?? ''
+    const dateB = b.letterDate ?? b.documentDate ?? b.receivedAt ?? ''
+    return dateB.localeCompare(dateA)
+  })
+}
+
+export type VaLetterIndexCategory = 'decision' | 'evidence_request' | 'intent_to_file' | 'correspondence'
+
+export function vaLetterIndexCategory(row: VaLetterIndexRow): VaLetterIndexCategory {
+  const priority = vaLetterListPriority(row)
+  if (priority <= 1) return 'decision'
+  if (priority === 2) return 'evidence_request'
+  if (priority === 3) return 'intent_to_file'
+  return 'correspondence'
+}
+
+export function vaLetterIndexCategoryLabel(category: VaLetterIndexCategory) {
+  const labels: Record<VaLetterIndexCategory, string> = {
+    decision: 'Decision',
+    evidence_request: 'Evidence request',
+    intent_to_file: 'Intent to File',
+    correspondence: 'Correspondence'
+  }
+  return labels[category]
 }
 
 function resolveEntityForLetter(
@@ -280,7 +322,7 @@ const VA_CLAIM_LETTERS_INDEX = 'https://api.va.gov/v0/claim_letters'
 export const REFRESH_VA_DECISION_LETTERS = 'VCH_REFRESH_VA_DECISION_LETTERS'
 export type VaDecisionLetterRefreshResult =
   | { ok: true, rows: VaLetterIndexRow[], ownerEpoch: string, saved: boolean }
-  | { ok: false, error: string }
+  | { ok: false, error: string, accountChanged?: boolean }
 
 async function fetchClaimLettersIndexPage(url: string): Promise<VaFetchResponse> {
   if (isVaGovPageContext()) {
@@ -318,10 +360,9 @@ export async function fetchVaDecisionLetterIndex(fetchPage = fetchClaimLettersIn
     totalPages = claimLettersTotalPages(res.data)
     const rows = unwrapLetterRows(res.data).filter(row => letterRowId(row))
     if (!rows.length && !isEmptyLetterIndex(res.data)) {
-      throw new Error('VA.gov did not return a valid decision letter list.')
+      throw new Error('VA.gov did not return a valid claim letter list.')
     }
     for (const row of rows) {
-      if (!isDecisionLetterRow(row)) continue
       const key = decisionLetterKey(row)
       if (seen.has(key)) continue
       seen.add(key)
@@ -331,7 +372,7 @@ export async function fetchVaDecisionLetterIndex(fetchPage = fetchClaimLettersIn
     if (page >= totalPages) break
   }
 
-  return { rows: all, ownerEpoch }
+  return { rows: sortVaLettersForDisplay(all), ownerEpoch }
 }
 
 export async function listVaDecisionLetters(): Promise<VaLetterIndexRow[]> {
@@ -370,6 +411,7 @@ export async function buildDecisionLetterUploadsForTrack(input: {
 
   for (const row of rows) {
     if (uploads.length >= MAX_LETTERS_PER_SYNC) break
+    if (!isDecisionLetterRow(row)) continue
 
     const entity = resolveEntityForLetter(row, input.claims, input.appeals)
     if (!entity) continue

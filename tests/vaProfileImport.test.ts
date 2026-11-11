@@ -7,6 +7,7 @@ import { importTrackSnapshotToClaimBuilder } from '../shared/claimBuilderTrackIm
 import { importVaRatingsToClaimBuilder } from '../shared/claimBuilderVaImport'
 import { sendDecisionLetterToVch } from '../shared/decisionLetterImport'
 import { unlockVaVault } from '../shared/vaLocalVault'
+import { checkVaCacheEpoch } from '../shared/vaDeviceCache'
 
 vi.mock('../shared/hubSessionRead', () => ({ readHubSession: vi.fn() }))
 vi.mock('../shared/privacyConsent', () => ({ readVaProfileCloudApproval: vi.fn() }))
@@ -14,12 +15,13 @@ vi.mock('../shared/vaTrackBridgeCache', () => ({ readVaTrackBridgeCachePayload: 
 vi.mock('../shared/claimBuilderTrackImport', () => ({ importTrackSnapshotToClaimBuilder: vi.fn() }))
 vi.mock('../shared/claimBuilderVaImport', () => ({ importVaRatingsToClaimBuilder: vi.fn() }))
 vi.mock('../shared/decisionLetterImport', () => ({ sendDecisionLetterToVch: vi.fn() }))
+vi.mock('../shared/vaDeviceCache', () => ({ checkVaCacheEpoch: vi.fn() }))
 
 const ratings = { combinedRating: 70, conditions: [{ name: 'Fixture condition', rating: 70 }] }
 const letter = (id: string) => ({ documentUuid: id, document_type: '184' })
 const selection = { accountId: 'account-a', ratings, letters: [letter('one'), letter('two')] }
 const track = { ok: true as const, claims: [{ id: 'fixture-claim' } as never], appeals: [], deviceLastSyncedAt: null, vaLabel: null }
-const approval = { acceptedAt: '2026-10-01T00:00:00Z', autoSyncTrack: false }
+const approval = { acceptedAt: '2026-10-01T00:00:00Z' }
 
 beforeEach(async () => {
   vi.clearAllMocks()
@@ -28,6 +30,7 @@ beforeEach(async () => {
   vi.mocked(sendDecisionLetterToVch).mockResolvedValue({ documentId: 'saved-fixture', duplicate: false })
   vi.mocked(importTrackSnapshotToClaimBuilder).mockResolvedValue({ ok: true, claimCount: 1, appealCount: 0 })
   vi.mocked(readVaProfileCloudApproval).mockResolvedValue(approval)
+  vi.mocked(checkVaCacheEpoch).mockImplementation(async epoch => epoch === 'current-va-owner')
   vi.mocked(readVaTrackBridgeCachePayload).mockResolvedValue(track)
   const storageArea = () => {
     const stored: Record<string, unknown> = {}
@@ -88,9 +91,12 @@ describe('shared VA Profile approval', () => {
   it('auto-syncs approved changes without re-sending unchanged claims or any letters', async () => {
     await autoSyncApprovedVaClaims()
     expect(importTrackSnapshotToClaimBuilder).not.toHaveBeenCalled()
-    vi.mocked(readVaProfileCloudApproval).mockResolvedValue({ ...approval, autoSyncTrack: true })
+    vi.mocked(readVaProfileCloudApproval).mockResolvedValue({ ...approval, autoSyncTrackOwnerEpoch: 'previous-va-owner' })
     await autoSyncApprovedVaClaims()
-    expect(importTrackSnapshotToClaimBuilder).toHaveBeenCalledExactlyOnceWith(track, 'account-a', { automatic: true })
+    expect(importTrackSnapshotToClaimBuilder).not.toHaveBeenCalled()
+    vi.mocked(readVaProfileCloudApproval).mockResolvedValue({ ...approval, autoSyncTrackOwnerEpoch: 'current-va-owner' })
+    await autoSyncApprovedVaClaims()
+    expect(importTrackSnapshotToClaimBuilder).toHaveBeenCalledExactlyOnceWith(track, 'account-a', { autoSyncOwnerEpoch: 'current-va-owner' })
     const firstReceipt = await readVaProfileSyncState('account-a')
     vi.mocked(readVaTrackBridgeCachePayload).mockResolvedValue({ ...track, deviceLastSyncedAt: '2026-11-09T00:00:00Z' })
     await autoSyncApprovedVaClaims()
@@ -100,13 +106,16 @@ describe('shared VA Profile approval', () => {
     const changed = { ...track, claims: [{ id: 'fixture-claim', status: 'COMPLETE' } as never] }
     vi.mocked(readVaTrackBridgeCachePayload).mockResolvedValue(changed)
     await autoSyncApprovedVaClaims()
-    expect(importTrackSnapshotToClaimBuilder).toHaveBeenLastCalledWith(changed, 'account-a', { automatic: true })
+    expect(importTrackSnapshotToClaimBuilder).toHaveBeenLastCalledWith(changed, 'account-a', { autoSyncOwnerEpoch: 'current-va-owner' })
     expect(sendDecisionLetterToVch).not.toHaveBeenCalled()
     expect(importVaRatingsToClaimBuilder).not.toHaveBeenCalled()
   })
   it('reports partial saves accurately and returns failed letters for retry', async () => {
     vi.mocked(importVaRatingsToClaimBuilder).mockRejectedValue(new Error('Ratings service unavailable'))
-    vi.mocked(sendDecisionLetterToVch).mockResolvedValueOnce({ documentId: 'saved-one', duplicate: false }).mockRejectedValueOnce(new Error('VA download failed'))
+    vi.mocked(sendDecisionLetterToVch)
+      .mockResolvedValueOnce({ documentId: 'saved-one', duplicate: false })
+      .mockRejectedValueOnce(new Error('VA download failed'))
+      .mockRejectedValueOnce(new Error('VA download failed'))
     const event = vi.fn()
     const result = await saveVaProfileToVch(selection, { letter: event })
     expect(result).toMatchObject({ ratingsSaved: false, ratingsError: 'Ratings service unavailable', lettersSaved: 1, lettersTotal: 2 })

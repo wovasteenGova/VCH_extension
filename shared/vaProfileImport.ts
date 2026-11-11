@@ -5,6 +5,7 @@ import { readVaTrackBridgeCachePayload, type VaTrackBridgeCachePayload } from '.
 import { importVaRatingsToClaimBuilder, type ClaimBuilderVaImportPayload } from './claimBuilderVaImport'
 import { sendDecisionLetterToVch } from './decisionLetterImport'
 import { decisionLetterKey, type VaLetterIndexRow } from './vaClaimLetters'
+import { checkVaCacheEpoch } from './vaDeviceCache'
 import { readVaVaultRecord, withVaVaultLock, writeVaVaultRecord } from './vaLocalVault'
 
 export type LetterImportOutcome = { row: VaLetterIndexRow, ok: boolean, message: string }
@@ -47,13 +48,22 @@ function withVaProfileSaveLock<T>(save: () => Promise<T>) {
   return globalThis.navigator?.locks?.request('vch-va-profile-save', save) ?? save()
 }
 
+async function importLetterWithRetry(row: VaLetterIndexRow, accountId: string) {
+  try {
+    return await sendDecisionLetterToVch(row, accountId)
+  } catch {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    return await sendDecisionLetterToVch(row, accountId)
+  }
+}
+
 export function saveVaProfileToVch(input: VaProfileSaveInput, events?: VaProfileSaveEvents) {
   return withVaProfileSaveLock(() => saveApprovedVaData(input, events))
 }
 
 export async function autoSyncApprovedVaClaims() {
   const session = await readHubSession()
-  if (!session.accountId || !(await readVaProfileCloudApproval(session.accountId))?.autoSyncTrack) return
+  if (!session.accountId) return
   await withVaProfileSaveLock(() => saveApprovedVaData({
     accountId: session.accountId, ratings: null, letters: []
   }, undefined, true))
@@ -68,14 +78,15 @@ async function saveApprovedVaData(
   if (!input.accountId || session.accountId !== input.accountId) throw new Error('Your VCH destination account changed or is not signed in. Refresh the account and approve again.')
   const approval = await readVaProfileCloudApproval(input.accountId)
   const result: VaProfileImportResult = { ratingsSaved: false, lettersSaved: 0, lettersTotal: input.letters.length, letterResults: [] }
-  if (automatic && !approval?.autoSyncTrack) return result
+  const ownerEpoch = automatic ? approval?.autoSyncTrackOwnerEpoch : undefined
+  if (automatic && (!ownerEpoch || !await checkVaCacheEpoch(ownerEpoch))) return result
   if (!approval) throw new Error('Approve saving VA data to your VCH account first.')
 
   const candidate = automatic ? await readVaTrackBridgeCachePayload() : input.track
   const track = candidate && (candidate.claims.length || candidate.appeals.length) ? candidate : null
   if (!track && !input.ratings && !input.letters.length) {
     if (automatic) return result
-    throw new Error('Sync claims, unlock ratings, or select decision letters to save.')
+    throw new Error('Sync claims, unlock ratings, or select claim letters to save.')
   }
   const syncState = await readVaProfileSyncState(input.accountId)
   const importedLetterKeys = new Set(syncState.importedLetterKeys)
@@ -84,8 +95,8 @@ async function saveApprovedVaData(
       const fingerprint = await trackFingerprint(track)
       if (automatic && syncState.trackFingerprint === fingerprint) return result
       events?.progress?.('Saving claims and appeals…')
-      result.track = automatic
-        ? await importTrackSnapshotToClaimBuilder(track, input.accountId, { automatic: true })
+      result.track = ownerEpoch
+        ? await importTrackSnapshotToClaimBuilder(track, input.accountId, { autoSyncOwnerEpoch: ownerEpoch })
         : await importTrackSnapshotToClaimBuilder(track, input.accountId)
       syncState.trackFingerprint = fingerprint
     } catch (error) {
@@ -102,10 +113,11 @@ async function saveApprovedVaData(
     }
   }
   for (const [index, row] of input.letters.entries()) {
-    events?.progress?.(`Saving decision letter ${index + 1} of ${input.letters.length}…`)
+    if (index > 0) await new Promise(resolve => setTimeout(resolve, 400))
+    events?.progress?.(`Saving VA letter ${index + 1} of ${input.letters.length}…`)
     let outcome: LetterImportOutcome
     try {
-      const saved = await sendDecisionLetterToVch(row, input.accountId)
+      const saved = await importLetterWithRetry(row, input.accountId)
       outcome = { row, ok: true, message: saved.duplicate ? 'Already in your VCH library' : 'Saved to your VCH library' }
       importedLetterKeys.add(decisionLetterKey(row))
       result.lettersSaved++
@@ -141,7 +153,7 @@ export function describeVaProfileImport(result: VaProfileImportResult) {
   if (result.trackError) parts.push(result.trackError)
   if (result.ratingsSaved) parts.push('Ratings and VA profile saved.')
   if (result.ratingsError) parts.push(result.ratingsError)
-  if (result.lettersTotal) parts.push(`${result.lettersSaved} of ${result.lettersTotal} decision letters saved.${result.lettersSaved < result.lettersTotal ? ' Unsent letters remain selected for retry.' : ''}`)
+  if (result.lettersTotal) parts.push(`${result.lettersSaved} of ${result.lettersTotal} claim letters saved.${result.lettersSaved < result.lettersTotal ? ' Unsent letters remain selected for retry.' : ''}`)
   return {
     title: failed ? saved ? 'Some VA data could not be saved' : 'Could not save VA data' : 'VA data saved to VCH',
     description: parts.join(' '),
