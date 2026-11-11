@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onClickOutside, useColorMode } from '@vueuse/core'
 import type { ClaimColorThemeId } from '@/shared/claimColorThemes'
+import { POPUP_COLOR_SCHEME_KEY } from '@/shared/popupColorScheme'
 import { usePopupColorTheme } from '../composables/usePopupColorTheme'
 
 const pickerOpen = ref(false)
@@ -9,8 +10,9 @@ const pickerRoot = ref<HTMLElement | null>(null)
 const { themeId, activeTheme, themes, setTheme, hydrate } = usePopupColorTheme()
 
 const colorScheme = useColorMode({
-  storageKey: 'vch-extension-color-scheme',
+  storageKey: POPUP_COLOR_SCHEME_KEY,
   attribute: 'class',
+  initialValue: 'light',
   modes: {
     light: 'light',
     dark: 'dark'

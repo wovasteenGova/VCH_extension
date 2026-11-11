@@ -11,8 +11,9 @@ import {
   saveVaAppealsCache,
   subscribeVaDeviceCache
 } from '@/shared/vaDeviceCache'
-import { isVaVerifyAccountError, vaVerifyAccountHelpText } from '@/shared/vaRequest'
+import { isVaVerifyAccountError } from '@/shared/vaRequest'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
+import VaVerifyAccountCopy from './VaVerifyAccountCopy.vue'
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -34,12 +35,6 @@ const showSignInPrompt = computed(() =>
 )
 
 const appealsVerifyAccountError = computed(() => isVaVerifyAccountError(error.value))
-
-const appealsErrorDescription = computed(() =>
-  appealsVerifyAccountError.value
-    ? vaVerifyAccountHelpText()
-    : 'Sign in at VA.gov so this tab can save appeals on your device. After that, they stay here even when you are signed out.'
-)
 
 function applyCache(appeals: ParsedVaAppeal[], syncedAt: string | null) {
   if (!appeals.length) return false
@@ -181,9 +176,15 @@ onMounted(() => {
       color="warning"
       variant="soft"
       icon="i-lucide-triangle-alert"
-      :title="error || 'Could not load appeals'"
-      :description="appealsErrorDescription"
+      :title="appealsVerifyAccountError ? undefined : (error || 'Could not load appeals')"
+      :description="appealsVerifyAccountError ? undefined : 'Sign in at VA.gov so this tab can save appeals on your device. After that, they stay here even when you are signed out.'"
     >
+      <template v-if="appealsVerifyAccountError" #title>
+        <VaVerifyAccountCopy variant="alert" />
+      </template>
+      <template v-if="appealsVerifyAccountError" #description>
+        <VaVerifyAccountCopy />
+      </template>
       <template #actions>
         <UButton
           size="sm"

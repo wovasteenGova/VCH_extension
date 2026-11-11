@@ -11,8 +11,10 @@ import { checkVaCacheEpoch, isRecentVaDeviceSync, readVaDeviceCache, saveVaRatin
 import { assessRatingsAvailability, type RatingsAvailability } from '@/shared/ratingsAvailability'
 import { RATINGS_LOCK_CREDENTIAL_KEY } from '@/shared/ratingsPasskeyLock'
 import { useRatingsPasskeyLock } from '../composables/useRatingsPasskeyLock'
-import { isVaVerifyAccountError, vaVerifyAccountHelpText } from '@/shared/vaRequest'
+import { isVaVerifyAccountError } from '@/shared/vaRequest'
+import DismissCloseButton from './DismissCloseButton.vue'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
+import VaVerifyAccountCopy from './VaVerifyAccountCopy.vue'
 
 const props = defineProps<{ active: boolean }>()
 const PASSKEY_SETUP_DISMISSED_KEY = 'vch-va-ratings-passkey-setup-dismissed'
@@ -76,19 +78,35 @@ const canUsePasskeyGate = computed(() => ratingsGate.value.available)
 const ratingsVisible = computed(() => lockInitialized.value && (
   hasCredential.value ? unlocked.value : setupDismissed.value && !setupRequested.value
 ))
+/** Signed-in or cached ratings: view without passkey setup (optional passkey stays above the list). */
+const allowRatingsWithoutPasskey = computed(() => !hasCredential.value && canUsePasskeyGate.value
+  && (vaConnected.value || hasRatingsData.value || ratingsGate.value.available))
+const canShowRatingsBody = computed(() => canUsePasskeyGate.value && (ratingsVisible.value || allowRatingsWithoutPasskey.value))
+const showPasskeyPrompt = computed(() => canUsePasskeyGate.value && !ratingsVisible.value)
+const showPasskeyDismiss = computed(() => showPasskeyPrompt.value && !hasCredential.value)
 
 const gateMessage = computed(() => {
   if (ratingsGate.value.available) return ''
   return ratingsGate.value.message
 })
 
-const ratingsVerifyAccountError = computed(() => isVaVerifyAccountError(error.value))
-
-const ratingsErrorAlertDescription = computed(() =>
-  ratingsVerifyAccountError.value
-    ? vaVerifyAccountHelpText()
-    : 'Open your disability rating on VA.gov in this browser, then refresh here.'
+const gateVerifyAccountError = computed(() =>
+  !ratingsGate.value.available && ratingsGate.value.reason === 'va_verify'
 )
+
+const gateHeading = computed(() => {
+  if (gateVerifyAccountError.value) return 'Could not confirm your VA.gov session'
+  if (ratingsGate.value.reason === 'vault_locked') return 'Unlock saved VA data'
+  return 'VA ratings required first'
+})
+
+const gatePasskeyFootnote = computed(() =>
+  gateVerifyAccountError.value || ratingsGate.value.reason === 'vault_locked'
+    ? 'If ratings were saved on this device before, unlock Data controls or refresh VA.gov and tap Check again. Passkey setup needs ratings on this device or a live VA session.'
+    : 'Passkey protection is only offered once VA disability ratings exist on this device or VA.gov is linked in this browser.'
+)
+
+const ratingsVerifyAccountError = computed(() => isVaVerifyAccountError(error.value))
 
 const emptyUnlockedMessage = computed(() => {
   if (error.value) return error.value
@@ -123,7 +141,7 @@ async function refreshImportProfilePreview() {
   profileRefreshing.value = true
   try {
     const profile = await refreshVaProfileForImport()
-    if (ratingsVisible.value && generation === displayGeneration) importProfilePreview.value = profile
+    if (canShowRatingsBody.value && generation === displayGeneration) importProfilePreview.value = profile
   } catch {
     // The saved profile remains available when a background refresh fails.
   } finally {
@@ -165,7 +183,7 @@ function applyRatings(ratings: VaDeviceCache['ratings'], syncedAt: string | null
 }
 
 async function loadRatings() {
-  if (!ratingsVisible.value || ratingsSyncing.value) return false
+  if (!canShowRatingsBody.value || ratingsSyncing.value) return false
   const generation = displayGeneration
   error.value = null
   ratingsSyncing.value = true
@@ -173,7 +191,7 @@ async function loadRatings() {
 
   try {
     const response = await fetchVaRatedDisabilities()
-    if (!ratingsVisible.value || generation !== displayGeneration) return false
+    if (!canShowRatingsBody.value || generation !== displayGeneration) return false
     if (!response.ok) {
       vaConnected.value = false
       isStale.value = hasRatingsData.value
@@ -183,7 +201,7 @@ async function loadRatings() {
 
     const summary = parseVaRatingsResponse(response.data)
     if (response.ownerEpoch && !await checkVaCacheEpoch(response.ownerEpoch)) return false
-    if (!ratingsVisible.value || generation !== displayGeneration) return false
+    if (!canShowRatingsBody.value || generation !== displayGeneration) return false
     vaConnected.value = true
     isStale.value = false
     const ratings = {
@@ -249,15 +267,15 @@ async function removeProtection() {
   if (!hasCredential.value) await dismissProtection()
 }
 
-watch(ratingsVisible, (visible) => {
-  if (!visible) clearRatingsDisplay()
+watch([ratingsVisible, allowRatingsWithoutPasskey], ([visible, allowOptional]) => {
+  if (!visible && !allowOptional) clearRatingsDisplay()
 }, { flush: 'sync' })
 
-watch([ratingsVisible, canUsePasskeyGate, () => props.active], async ([visible, available, active]) => {
-  if (!visible || !available || !active) return
+watch([canShowRatingsBody, canUsePasskeyGate, () => props.active], async ([showBody, available, active]) => {
+  if (!showBody || !available || !active) return
   const generation = displayGeneration
   const cache = await readVaDeviceCache()
-  if (!ratingsVisible.value || generation !== displayGeneration) return
+  if (!canShowRatingsBody.value || generation !== displayGeneration) return
   if (cache.ratings && !hasRatingsData.value) applyRatings(cache.ratings, cache.lastSyncedAt)
   importProfilePreview.value ??= cache.profile
   const fresh = isRecentVaDeviceSync(cache.ratings?.fetchedAt)
@@ -269,7 +287,7 @@ onMounted(async () => {
   const stop = subscribeVaDeviceCache((cache) => {
     if (!cache.ratings || cache.ratings.fetchedAt === lastSyncedAt.value) return
     ratingsGate.value = { available: true, source: 'cache' }
-    if (ratingsVisible.value) {
+    if (canShowRatingsBody.value) {
       applyRatings(cache.ratings, cache.lastSyncedAt)
       isStale.value = false
     }
@@ -298,19 +316,19 @@ onMounted(async () => {
 })
 
 onUnmounted(lockRatings)
-const ready = computed(() => ratingsVisible.value && hasRatingsData.value)
+const ready = computed(() => canShowRatingsBody.value && hasRatingsData.value)
 defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPayload })
 </script>
 
 <template>
   <div class="flex flex-col gap-3 pb-1">
     <div class="flex items-center justify-between gap-2">
-      <p class="font-medium text-sm text-highlighted">
+      <p class="min-w-0 flex-1 font-medium text-sm text-highlighted">
         Rated disabilities
       </p>
-      <div class="flex items-center gap-1">
+      <div class="flex shrink-0 items-center gap-1">
         <UButton
-          v-if="ratingsVisible && canUsePasskeyGate"
+          v-if="canShowRatingsBody"
           size="xs"
           color="neutral"
           variant="ghost"
@@ -320,7 +338,7 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
           @click="openProtection"
         />
         <UButton
-          v-if="ratingsVisible && canUsePasskeyGate"
+          v-if="canShowRatingsBody"
           size="xs"
           color="neutral"
           variant="ghost"
@@ -342,19 +360,22 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
 
     <div
       v-else-if="!canUsePasskeyGate"
-      class="space-y-3 rounded-lg border border-warning/30 bg-warning/10 p-4"
+      class="space-y-3 rounded-2xl border border-warning/30 bg-warning/10 p-4"
     >
       <div class="flex items-start gap-3">
         <UIcon name="i-lucide-shield-alert" class="mt-0.5 size-5 shrink-0 text-warning" />
         <div class="min-w-0 space-y-1">
           <p class="font-medium text-sm text-highlighted">
-            VA ratings required first
+            {{ gateHeading }}
           </p>
-          <p class="text-muted text-xs leading-relaxed">
+          <p v-if="gateVerifyAccountError" class="text-muted text-xs leading-relaxed">
+            <VaVerifyAccountCopy variant="alert" />
+          </p>
+          <p v-else class="text-muted text-xs leading-relaxed">
             {{ gateMessage }}
           </p>
           <p class="text-muted text-[0.65rem] leading-relaxed">
-            Passkey protection is only offered once VA disability ratings exist on this device or VA.gov is linked in this browser.
+            {{ gatePasskeyFootnote }}
           </p>
         </div>
       </div>
@@ -377,47 +398,53 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
           @click="openVaDisabilityRating"
         />
         <UButton
+          v-if="gateVerifyAccountError"
+          block
+          size="md"
+          color="primary"
+          label="Sign in to VA.gov"
+          @click="openVaSignIn"
+        />
+        <UButton
           block
           size="md"
           color="neutral"
           variant="outline"
+          icon="i-lucide-refresh-cw"
           label="Check again"
           @click="refreshRatingsGate"
         />
       </div>
     </div>
 
-    <div
-      v-else-if="!ratingsVisible"
-      class="space-y-3 rounded-lg border border-default bg-elevated/30 p-4"
+    <section
+      v-if="showPasskeyPrompt"
+      class="space-y-3 rounded-lg border border-default bg-elevated/30 p-3"
+      aria-labelledby="va-ratings-passkey-heading"
     >
-      <div class="flex items-start gap-3">
-        <UIcon name="i-lucide-shield-check" class="mt-0.5 size-5 shrink-0 text-primary" />
-        <div class="min-w-0 flex-1 space-y-1">
-          <div class="flex items-center justify-between gap-2">
-            <p class="font-medium text-sm text-highlighted">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex min-w-0 flex-1 items-start gap-3">
+          <UIcon name="i-lucide-shield-check" class="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <div class="min-w-0 flex-1 space-y-1">
+            <p id="va-ratings-passkey-heading" class="pr-1 font-medium text-sm text-highlighted">
               {{ hasCredential ? 'Ratings are protected' : 'Protect your ratings' }}
             </p>
-            <UButton
-              v-if="!hasCredential"
-              icon="i-lucide-x"
-              color="error"
-              variant="ghost"
-              size="xs"
-              aria-label="Dismiss passkey setup"
-              title="Continue without a passkey"
-              :disabled="lockBusy"
-              @click="dismissProtection"
-            />
+            <p class="text-muted text-xs leading-relaxed">
+              {{ !supported
+                ? 'Passkey protection is unavailable in this browser.'
+                : hasCredential
+                  ? 'Open with Windows Hello, a device passkey, or your browser saved passkey.'
+                  : 'Set up a passkey to protect your ratings on this device.' }}
+            </p>
           </div>
-          <p class="text-muted text-xs leading-relaxed">
-            {{ !supported
-              ? 'Passkey protection is unavailable in this browser.'
-              : hasCredential
-                ? 'Open with Windows Hello, a device passkey, or your browser saved passkey.'
-                : 'Set up a passkey to protect your ratings on this device.' }}
-          </p>
         </div>
+        <DismissCloseButton
+          v-if="!hasCredential"
+          label="Dismiss passkey setup"
+          title="Continue without a passkey"
+          :disabled="lockBusy"
+          @click="dismissProtection"
+        />
       </div>
 
       <p
@@ -447,9 +474,9 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
       >
         Remove passkey protection on this device
       </button>
-    </div>
+    </section>
 
-    <template v-else>
+    <template v-if="canShowRatingsBody">
       <VaStaleSyncBanner
         v-if="isStale"
         :last-synced-at="lastSyncedAt"
@@ -461,9 +488,15 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
         color="warning"
         variant="soft"
         icon="i-lucide-triangle-alert"
-        :title="error"
-        :description="ratingsErrorAlertDescription"
+        :title="ratingsVerifyAccountError ? undefined : error"
+        :description="ratingsVerifyAccountError ? undefined : 'Open your disability rating on VA.gov in this browser, then refresh here.'"
       >
+        <template v-if="ratingsVerifyAccountError" #title>
+          <VaVerifyAccountCopy variant="alert" />
+        </template>
+        <template v-if="ratingsVerifyAccountError" #description>
+          <VaVerifyAccountCopy />
+        </template>
         <template #actions>
           <UButton
             size="sm"
@@ -571,13 +604,13 @@ defineExpose({ ready, previewItems: importPreviewItems, payload: currentImportPa
           <li
             v-for="row in rows"
             :key="row.id"
-            class="rounded-lg border border-default bg-elevated/40 p-3"
+            class="rounded-2xl border border-default bg-elevated/40 p-3"
           >
             <div class="flex items-start justify-between gap-2">
               <p class="min-w-0 font-medium text-sm text-highlighted">
                 {{ row.name }}
               </p>
-              <span class="shrink-0 font-semibold text-primary">
+              <span class="shrink-0 text-xl font-semibold tabular-nums text-primary">
                 {{ row.rating != null ? `${row.rating}%` : 'N/A' }}
               </span>
             </div>

@@ -20,7 +20,11 @@ export type VaProfileImportResult = {
 }
 
 export const VA_PROFILE_SYNC_STATE_PREFIX = 'vch-va-profile-sync:'
-type VaProfileSyncState = { lastSyncedAt?: string, trackFingerprint?: string, importedLetterKeys?: string[] }
+type VaProfileSyncState = {
+  lastSyncedAt?: string
+  trackFingerprint?: string
+  importedLetterKeys?: string[]
+}
 
 export async function readVaProfileSyncState(accountId: string): Promise<VaProfileSyncState> {
   const key = VA_PROFILE_SYNC_STATE_PREFIX + accountId
@@ -134,7 +138,8 @@ async function saveApprovedVaData(
       if (current?.acceptedAt === approval.acceptedAt) {
         if (result.lettersSaved) syncState.importedLetterKeys = [...importedLetterKeys]
         await writeVaVaultRecord(VA_PROFILE_SYNC_STATE_PREFIX + input.accountId, {
-          ...syncState, lastSyncedAt: new Date().toISOString()
+          ...syncState,
+          lastSyncedAt: new Date().toISOString()
         })
       }
     }).catch(() => undefined)

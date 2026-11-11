@@ -1,5 +1,6 @@
 import { openVaSignIn as openVaSignInNavigation } from './vaSignInNavigation'
-import { DEFAULT_HUB_ORIGIN, getDetectedHubOrigin, hubUrlOnOrigin, setDetectedHubOrigin } from './hubOrigins'
+import { openHubSignIn as openHubSignInNavigation } from './hubSignInNavigation'
+import { DEFAULT_HUB_ORIGIN, getDetectedHubOrigin, setDetectedHubOrigin } from './hubOrigins'
 import { readHubSession } from './hubSessionRead'
 import {
   fetchVaUser
@@ -72,5 +73,5 @@ export function openVaSignIn() {
 }
 
 export function openHubSignIn() {
-  void browser.tabs.create({ url: hubUrlOnOrigin(DEFAULT_HUB_ORIGIN, '/?signin=1') })
+  openHubSignInNavigation()
 }

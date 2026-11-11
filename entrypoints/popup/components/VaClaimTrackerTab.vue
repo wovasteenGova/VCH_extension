@@ -18,10 +18,11 @@ import {
   type ParsedVaClaim
 } from '@/shared/vaClaimParse'
 import { probeVaSession } from '@/shared/connectionStatus'
-import { isVaVerifyAccountError, vaVerifyAccountHelpText } from '@/shared/vaRequest'
+import { isVaVerifyAccountError } from '@/shared/vaRequest'
 import { isRecentVaDeviceSync, readVaDeviceCache, readVaCacheMeta, saveVaClaimsCache, subscribeVaDeviceCache } from '@/shared/vaDeviceCache'
 import { hasOpenVaGovTab } from '@/shared/vaGovTabFetch'
 import VaStaleSyncBanner from './VaStaleSyncBanner.vue'
+import VaVerifyAccountCopy from './VaVerifyAccountCopy.vue'
 
 const toast = useToast()
 const loading = ref(false)
@@ -88,7 +89,6 @@ const showCachedClaimsRestoreHint = computed(() =>
 const claimsVerifyAccountError = computed(() => isVaVerifyAccountError(error.value))
 
 const claimsErrorDescription = computed(() => {
-  if (claimsVerifyAccountError.value) return vaVerifyAccountHelpText()
   if (!vaGovTabOpen.value) {
     return 'No claims saved on this device yet. Open Track claims on VA.gov in this browser, sign in, let your list load, then refresh here or use the VCH bar at the bottom of that page.'
   }
@@ -374,9 +374,15 @@ function openVaClaims() {
       color="warning"
       variant="soft"
       icon="i-lucide-triangle-alert"
-      :title="error || 'Could not load claims'"
-      :description="claimsErrorDescription"
+      :title="claimsVerifyAccountError ? undefined : (error || 'Could not load claims')"
+      :description="claimsVerifyAccountError ? undefined : claimsErrorDescription"
     >
+      <template v-if="claimsVerifyAccountError" #title>
+        <VaVerifyAccountCopy variant="alert" />
+      </template>
+      <template v-if="claimsVerifyAccountError" #description>
+        <VaVerifyAccountCopy />
+      </template>
       <template #actions>
         <UButton
           size="sm"

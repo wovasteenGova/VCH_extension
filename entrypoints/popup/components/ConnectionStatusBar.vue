@@ -18,6 +18,7 @@ import {
 } from '@/shared/vaDeviceCache'
 import { hubUrl } from '@/shared/urls'
 import type { HubSavedCategory } from '@/shared/vchHubSavedItems'
+import DismissCloseButton from './DismissCloseButton.vue'
 
 const loading = ref(true)
 const hub = ref<ConnectionState>({ connected: false, label: 'Checking…' })
@@ -330,16 +331,7 @@ defineExpose({ refresh })
                     :class="bookmarksLoading ? 'animate-spin' : ''"
                   />
                 </button>
-                <UButton
-                  type="button"
-                  size="sm"
-                  color="error"
-                  variant="soft"
-                  class="shrink-0 ring-1 ring-inset ring-red-500/35"
-                  icon="i-lucide-x"
-                  aria-label="Close"
-                  @click="closeBookmarks"
-                />
+                <DismissCloseButton label="Close" @click="closeBookmarks" />
               </div>
             </div>
             <div class="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-3 pt-2 sm:px-4">

@@ -7,6 +7,7 @@ import {
   VA_QUICK_LINKS,
   VCH_TOOLS_LINKS
 } from '@/shared/popupFooterLinks'
+import DismissCloseButton from './DismissCloseButton.vue'
 
 type FooterPanelId = 'hub' | 'va' | 'tools'
 
@@ -152,16 +153,7 @@ function openLink(url: string) {
           <p class="min-w-0 flex-1 pt-0.5 text-sm font-semibold leading-snug text-highlighted">
             {{ activePanel.title }}
           </p>
-          <UButton
-            type="button"
-            size="sm"
-            color="error"
-            variant="soft"
-            class="shrink-0 ring-1 ring-inset ring-red-500/35"
-            icon="i-lucide-x"
-            aria-label="Close"
-            @click="closePanel"
-          />
+          <DismissCloseButton label="Close" @click="closePanel" />
         </div>
         <div
           ref="listBodyRef"

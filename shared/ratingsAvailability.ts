@@ -1,14 +1,24 @@
 import { fetchVaRatedDisabilities } from './vaClient'
 import { readVaDeviceCache, saveVaRatingsCache } from './vaDeviceCache'
+import { readVaVaultStatus } from './vaLocalVault'
 import { parseVaRatingsResponse } from './vaRatingParse'
+import { isVaVerifyAccountError } from './vaRequest'
 
 export type RatingsAvailability =
   | { available: true, source: 'cache' | 'live' }
-  | { available: false, reason: 'va_sign_in' | 'no_ratings' | 'fetch_failed', message: string }
+  | { available: false, reason: 'va_sign_in' | 'no_ratings' | 'fetch_failed' | 'vault_locked' | 'va_verify', message: string }
 
 export async function assessRatingsAvailability(): Promise<RatingsAvailability> {
   const { ratings } = await readVaDeviceCache()
   if (ratings && (ratings.rows.length || ratings.combinedRating != null)) return { available: true, source: 'cache' }
+
+  if (await readVaVaultStatus() === 'locked') {
+    return {
+      available: false,
+      reason: 'vault_locked',
+      message: 'Saved VA data is locked. Open Data controls and unlock to view ratings saved on this device.'
+    }
+  }
 
   const response = await fetchVaRatedDisabilities()
   if (!response.ok) {
@@ -19,7 +29,11 @@ export async function assessRatingsAvailability(): Promise<RatingsAvailability> 
         message: 'Sign in to VA.gov before protecting or viewing disability ratings.'
       }
     }
-    return { available: false, reason: 'fetch_failed', message: response.error || 'Could not reach VA.gov right now.' }
+    const message = response.error || 'Could not reach VA.gov right now.'
+    if (isVaVerifyAccountError(message)) {
+      return { available: false, reason: 'va_verify', message }
+    }
+    return { available: false, reason: 'fetch_failed', message }
   }
 
   const summary = parseVaRatingsResponse(response.data)

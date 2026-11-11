@@ -67,7 +67,7 @@ export function isVaVerifyAccountError(message: string | null | undefined) {
 }
 
 export function vaVerifyAccountHelpText() {
-  return 'If you are already signed in on VA.gov, refresh that tab, wait for the page to load, then tap refresh in the extension.'
+  return 'If you are already signed in on VA.gov, refresh your VA.gov tab, wait for the page to load, then tap refresh in the extension.'
 }
 
 export async function requestVa(url: string, binary = false, accountStore?: VaAccountStore): Promise<VaRawResponse> {

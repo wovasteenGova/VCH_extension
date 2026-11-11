@@ -7,6 +7,8 @@ import { VA_CLAIM_LETTERS_PAGE } from '@/shared/vaEndpoints'
 import { probeVaSession } from '@/shared/connectionStatus'
 import { formatLastSynced, isRecentVaDeviceSync, readVaDeviceCache, subscribeVaDeviceCache, VA_CACHE_OWNER_KEY, type VaDeviceCache } from '@/shared/vaDeviceCache'
 import { isCurrentVaEpoch } from '@/shared/vaAccount'
+import { isVaVerifyAccountError } from '@/shared/vaRequest'
+import VaVerifyAccountCopy from './VaVerifyAccountCopy.vue'
 
 const props = defineProps<{ active: boolean, busy: boolean, accountId: string | null, importedLetterKeys: string[] }>()
 defineEmits<{ import: [] }>()
@@ -251,6 +253,9 @@ defineExpose({ selectedLetters, selectedLetterRowsForImport, recordOutcome, refr
       </div>
     </div>
     <p v-if="staleHint" role="status" class="text-sm text-muted">{{ staleHint }}</p>
+    <p v-else-if="error && isVaVerifyAccountError(error)" role="alert" class="text-sm text-error">
+      <VaVerifyAccountCopy variant="alert" />
+    </p>
     <p v-else-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
     <p v-if="checkingStatus" role="status" class="text-sm text-muted">Checking your VCH library…</p>
     <p v-else-if="statusUnavailable" class="text-sm text-muted">Could not check your VCH library. Refresh letters to try again.</p>
@@ -261,7 +266,7 @@ defineExpose({ selectedLetters, selectedLetterRowsForImport, recordOutcome, refr
       <UCheckbox :model-value="selectAllState" :disabled="busy" :label="selectAllLabel" :aria-label="selectAllLabel" @update:model-value="toggleAll" />
       <p class="text-sm text-muted">{{ selectedLetters.length }} of {{ selectableLetters.length }} selected</p>
     </div>
-    <div v-for="row in letters" :key="key(row)" class="space-y-2 rounded-lg border border-default p-3">
+    <div v-for="row in letters" :key="key(row)" class="space-y-2 rounded-2xl border border-default p-3">
       <div class="flex flex-wrap items-start justify-between gap-2">
         <UCheckbox :model-value="imported.has(key(row)) || selected.includes(key(row))" :disabled="busy || imported.has(key(row))" :label="row.documentTypeLabel || (row.document_type === '27' ? 'Appeal decision' : 'Claim decision or notification')" @update:model-value="toggle(row, $event)" />
         <div class="flex flex-wrap items-center gap-1.5">

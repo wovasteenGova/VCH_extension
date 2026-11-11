@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DismissCloseButton from './DismissCloseButton.vue'
 import VaRatingsTab from './VaRatingsTab.vue'
 import VaDecisionLettersTab from './VaDecisionLettersTab.vue'
 import { readHubSession } from '@/shared/hubSessionRead'
@@ -65,6 +66,25 @@ const trackSummary = computed(() => {
 const canSave = computed(() => Boolean(accountId.value && ((includeTrack.value && hasTrack.value) || ratingsReady.value || selectedLetters.value.length)))
 const showApprovalCard = computed(() => approvalCardOpen.value ?? !approval.value)
 const lastSyncLabel = computed(() => formatLastSynced(lastSyncedAt.value))
+const lastSaveTitle = ref<string | null>(null)
+
+const syncFlash = computed(() => {
+  if (!feedback.value) return null
+  return {
+    title: lastSaveTitle.value,
+    text: feedback.value,
+    color: feedbackColor.value
+  }
+})
+
+function clearSyncFlash() {
+  feedback.value = ''
+  lastSaveTitle.value = null
+}
+
+function syncStatusColorClass(color: 'success' | 'warning' | 'error') {
+  return color === 'success' ? 'text-success' : color === 'warning' ? 'text-warning' : 'text-error'
+}
 
 let accountRefresh = 0
 async function refreshAccount() {
@@ -76,7 +96,7 @@ async function refreshAccount() {
   if (accountId.value !== session.accountId) {
     if (accountReady.value) approvalCardOpen.value = null
     if (accountId.value) importAfterApproval.value = false
-    feedback.value = ''
+    clearSyncFlash()
   }
   approval.value = currentApproval
   lastSyncedAt.value = syncState?.lastSyncedAt ?? null
@@ -126,6 +146,7 @@ function openApprovalCard() {
 function dismissApprovalCard() {
   importAfterApproval.value = false
   approvalCardOpen.value = false
+  clearSyncFlash()
   void nextTick(() => document.getElementById('va-profile-sync-toggle')?.focus())
 }
 
@@ -209,7 +230,17 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
     const message = describeVaProfileImport(result)
     feedback.value = message.description
     feedbackColor.value = message.color
-    toast.update(notification.id, { ...message, icon: message.color === 'success' ? 'i-lucide-circle-check' : 'i-lucide-triangle-alert', ui: { icon: '' }, duration: 6000, close: true })
+    lastSaveTitle.value = message.title
+    toast.update(notification.id, {
+      title: message.title,
+      description: message.description,
+      color: message.color,
+      icon: message.color === 'success' ? 'i-lucide-circle-check' : 'i-lucide-triangle-alert',
+      ui: { icon: '' },
+      duration: 8000,
+      close: true
+    })
+    if (message.color === 'success') dismissApprovalCard()
     if (props.trackAfterSave && result.track && message.color === 'success') emit('track')
   } catch (error) {
     feedback.value = error instanceof Error ? error.message : 'Could not save VA data.'
@@ -249,13 +280,28 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
     <section v-if="showApprovalCard" id="va-profile-sync-card" ref="approvalCard" class="space-y-3 rounded-lg border border-default bg-elevated/30 p-3" aria-labelledby="save-va-data-heading">
       <div class="flex items-start justify-between gap-2">
         <h3 id="save-va-data-heading" class="text-base font-semibold text-highlighted">Save VA data to your VCH account</h3>
-        <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-x" aria-label="Dismiss sync card" :disabled="updatingApproval" @click="dismissApprovalCard" />
+        <DismissCloseButton label="Dismiss sync card" :disabled="updatingApproval" @click="dismissApprovalCard" />
       </div>
       <div class="flex items-center justify-between gap-2">
         <p class="text-sm font-medium">{{ accountLabel }}</p>
         <UButton size="xs" variant="ghost" icon="i-lucide-refresh-cw" aria-label="Refresh VCH account" :disabled="updatingApproval" @click="refreshAccount" />
       </div>
       <p class="text-xs text-muted">{{ lastSyncLabel ? `Last synced ${lastSyncLabel}` : 'No sync recorded yet' }}</p>
+      <div
+        v-if="syncFlash"
+        role="status"
+        class="flex items-start justify-between gap-2 rounded-md border border-default/80 bg-default/60 px-2.5 py-2"
+      >
+        <div class="min-w-0">
+          <p v-if="syncFlash.title" class="text-xs font-semibold text-highlighted">
+            {{ syncFlash.title }}
+          </p>
+          <p class="text-sm leading-snug" :class="syncStatusColorClass(syncFlash.color)">
+            {{ syncFlash.text }}
+          </p>
+        </div>
+        <DismissCloseButton label="Dismiss save summary" @click="clearSyncFlash" />
+      </div>
       <p class="text-sm text-muted">Confirm this is the VCH account you want to send your VA data to. Approval lets you save claims, appeals, unlocked ratings, profile details, and selected claim letters.</p>
       <UCheckbox
         v-if="approval && !trackAfterSave"
@@ -284,7 +330,6 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
         <UButton size="sm" variant="ghost" color="error" :disabled="syncBusy" @click="revokeApproval">Revoke sync approval</UButton>
       </template>
       <UButton v-else-if="accountReady" block variant="outline" @click="openHubSignIn">Sign in to Hub</UButton>
-      <p v-if="feedback" role="status" class="text-sm" :class="feedbackColor === 'success' ? 'text-success' : feedbackColor === 'warning' ? 'text-warning' : 'text-error'">{{ feedback }}</p>
     </section>
     <div class="min-w-0">
       <UTabs
@@ -295,8 +340,9 @@ async function save(scope: 'all' | 'track' | 'letters' = 'all') {
         :ui="{
           list: 'gap-2.5 bg-transparent p-0',
           indicator: 'hidden',
-          trigger: 'va-profile-tab-trigger group/profile-tab relative min-h-10 rounded-none border-0 text-base font-semibold data-[state=active]:rounded-[20%] data-[state=active]:text-primary',
-          label: 'inline-flex items-center gap-2 rounded-[5%] px-3 py-1 group-data-[state=active]/profile-tab:bg-primary/15'
+          trigger: 'va-profile-tab-trigger group/profile-tab relative min-h-10 rounded-none border-0 text-base font-semibold data-[state=active]:rounded-3xl data-[state=active]:text-primary',
+          label: 'inline-flex items-center gap-2 rounded-2xl px-3 py-1 group-data-[state=active]/profile-tab:bg-primary/15',
+          content: 'mt-1.5 focus:outline-none'
         }"
       >
         <template #default="{ item }">
